@@ -226,7 +226,12 @@ def _matches_education(scheme: SchemeRecord, level: str) -> bool:
 
 
 def _matches_state(scheme: SchemeRecord, state: str) -> bool:
-    """Return True if the scheme applies to the requested state."""
+    """Return True only if the scheme is restricted to the requested state.
+
+    All-India schemes (no state restriction) do NOT match a specific-state
+    filter; omit the state filter to see all-India results. The sentinel
+    values "all india" / "all" / "any" match every scheme.
+    """
     scheme_state = scheme.criteria.state
     state_norm = state.lower().strip()
     if state_norm in ("all india", "all", "any"):

@@ -8,6 +8,11 @@
  *   response: { conversation_id, status, answer, sources[], events[],
  *               action_plan[] }
  *
+ * The backend emits status "needs_clarification"; it is normalised here to
+ * the client-side "clarification" (which also carries a structured
+ * `clarification` object). Tool event statuses arrive already normalised to
+ * "completed"/"failed".
+ *
  * Optional forward-compatible fields (rendered only when present, never
  * fabricated): matches[], eligibility{}, documents[], steps[], clarification{}.
  *
@@ -127,7 +132,7 @@
     var met = asArray(raw.met || raw.matched || raw.satisfied).map(function (v) {
       return asString(v, MAX_SHORT);
     }).filter(Boolean);
-    var missing = asArray(raw.missing || raw.gaps || raw.incomplete).map(function (v) {
+    var missing = asArray(raw.missing || raw.unsatisfied || raw.gaps || raw.incomplete).map(function (v) {
       return asString(v, MAX_SHORT);
     }).filter(Boolean);
     var unknown = asArray(raw.unknown || raw.uncertain).map(function (v) {
@@ -187,6 +192,7 @@
 
   function inferStatus(raw, answer, sources, matches, events, clarification) {
     var status = asString(raw.status).toLowerCase();
+    if (status === "needs_clarification") return "clarification";
     if (RESPONSE_STATUSES.indexOf(status) !== -1) return status;
     if (clarification) return "clarification";
     var anyFailed = events.some(function (e) {

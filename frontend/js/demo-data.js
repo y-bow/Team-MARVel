@@ -63,12 +63,12 @@
         "Demonstrated academic interest in the chosen field"
       ],
       missing: [
-        "Annual household income",
-        "State or region of permanent residence"
+        "Minimum academic percentage required for the illustrative award",
+        "Enrolled in an approved science or technology field"
       ],
       unknown: [
-        "Whether you belong to a category with reserved seats",
-        "Whether any previous scholarship was availed in the same cycle"
+        "Annual household income",
+        "State or region of permanent residence"
       ]
     },
     documents: [
@@ -86,7 +86,7 @@
     events: [
       { tool: "parse_intent", status: "completed", summary: "Interpreted your goal as a scholarship search.", detail: "demo · goal=scholarship_search\ncourse=unspecified\nregion=unspecified" },
       { tool: "search_schemes", status: "completed", summary: "Retrieved 3 illustrative records from the demo dataset.", detail: "demo · matched_ids:\nSCHEME-DEMO-001\nSCHEME-DEMO-002\nSCHEME-DEMO-003" },
-      { tool: "check_eligibility", status: "completed", summary: "Compared your details with each record; 2 criteria still missing.", detail: "demo · missing:\nhousehold_income\nstate_of_residence" },
+      { tool: "check_eligibility", status: "completed", summary: "Compared your details with each record; 2 criteria were not met.", detail: "demo · unsatisfied:\nmin_percentage\nfield_of_study" },
       { tool: "summarise", status: "completed", summary: "Prepared a grounded summary with sources.", detail: "demo · summary_generated=true" }
     ],
     action_plan: [
@@ -94,7 +94,7 @@
       { title: "Open the official source for each illustrative match", completed: false },
       { title: "Collect scanned copies of the required documents", completed: false },
       { title: "Note the application deadlines for each record", completed: false },
-      { title: "Re-run the investigation with the missing details", completed: false }
+      { title: "Re-run the investigation with the additional information", completed: false }
     ]
   };
 

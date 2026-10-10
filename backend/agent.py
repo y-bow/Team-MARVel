@@ -340,6 +340,12 @@ class AgentResponse:
     sources: list[dict[str, str]] = field(default_factory=list)
     events: list[dict[str, str]] = field(default_factory=list)
     action_plan: list[dict[str, Any]] = field(default_factory=list)
+    # Optional structured fields — only populated when tool results support them.
+    clarification: Optional[dict[str, Any]] = None
+    matches: list[dict[str, Any]] = field(default_factory=list)
+    eligibility: Optional[dict[str, list[str]]] = None
+    documents: list[str] = field(default_factory=list)
+    steps: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +394,10 @@ class AgentLoop:
         events: list[dict[str, str]] = []
         action_plan: list[dict[str, Any]] = []
         sources_map: dict[str, dict[str, str]] = {}  # id → source record
+        matches: list[dict[str, Any]] = []
+        eligibility: dict[str, list[str]] = {}
+        documents: list[str] = []
+        steps: list[str] = []
 
         # ------------------------------------------------------------------
         # Function-calling loop
@@ -484,13 +494,17 @@ class AgentLoop:
                                 f"Tool arguments must be an object, got {type(raw_args).__name__}"
                             )
                         result = self._registry[tool_name](**raw_args)
+                        is_error = isinstance(result, dict) and result.get("error") is True
                         events.append({
                             "tool": tool_name,
-                            "status": "ok",
+                            "status": "error" if is_error else "ok",
                             "summary": _summarize_result(tool_name, result),
                         })
-                        # Collect sources
-                        _extract_sources(result, sources_map)
+                        # Collect sources, eligibility, requirements, matches
+                        _collect_optional_fields(
+                            tool_name, result, sources_map, matches,
+                            eligibility, documents, steps,
+                        )
                         # Collect action plan steps
                         if tool_name == "create_action_plan" and isinstance(result, dict):
                             action_plan = result.get("steps", [])
@@ -541,6 +555,11 @@ class AgentLoop:
         # Determine status
         status = _infer_status(final_text, events)
 
+        # Structured clarification when the agent needs more information.
+        clarification = None
+        if status == "needs_clarification":
+            clarification = {"question": final_text, "options": []}
+
         return AgentResponse(
             conversation_id=conversation_id,
             status=status,
@@ -548,6 +567,11 @@ class AgentLoop:
             sources=list(sources_map.values()),
             events=events,
             action_plan=action_plan,
+            clarification=clarification,
+            matches=matches,
+            eligibility=eligibility or None,
+            documents=documents,
+            steps=steps,
         )
 
 
@@ -596,6 +620,87 @@ def _extract_sources(result: dict[str, Any], sources_map: dict[str, dict[str, st
     name = result.get("scheme_name", sid)
     if sid and url:
         sources_map[sid] = {"id": sid, "title": name or sid, "url": url}
+
+
+def _collect_optional_fields(
+    tool_name: str,
+    result: dict[str, Any],
+    sources_map: dict[str, dict[str, str]],
+    matches: list[dict[str, Any]],
+    eligibility: dict[str, list[str]],
+    documents: list[str],
+    steps: list[str],
+) -> None:
+    """Extract client-facing matches/eligibility/documents/steps from tool results."""
+    if not isinstance(result, dict) or result.get("error") is True:
+        return
+    _extract_sources(result, sources_map)
+
+    if tool_name == "search_schemes":
+        _collect_matches(result, matches)
+    elif tool_name == "check_eligibility":
+        _collect_eligibility(result, eligibility)
+    elif tool_name == "get_requirements":
+        _collect_requirements(result, documents, steps)
+
+
+def _collect_matches(result: dict[str, Any], matches: list[dict[str, Any]]) -> None:
+    """Collect scheme candidates surfaced by search_schemes (no fabricated fields)."""
+    for item in result.get("results") or []:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("name") or "").strip() or str(item.get("id") or "").strip()
+        if not title:
+            continue
+        matches.append({
+            "id": str(item.get("id") or "").strip(),
+            "title": title,
+            "summary": str(item.get("description_snippet") or "").strip(),
+            "url": str(item.get("source_url") or "").strip(),
+        })
+
+
+def _eligibility_line(item: dict[str, Any], met: bool) -> str:
+    """Human-readable line for one eligibility criterion result."""
+    name = str(item.get("criterion") or "").strip() or "criterion"
+    if met:
+        required = str(item.get("required") or "").strip()
+        return f"{name} (required: {required})" if required else name
+    note = str(item.get("note") or "").strip()
+    return f"{name}: {note}" if note else name
+
+
+def _collect_eligibility(result: dict[str, Any], holder: dict[str, list[str]]) -> None:
+    """Collect eligibility rows: met / missing (not met) / unknown."""
+    holder["met"] = [
+        _eligibility_line(c, met=True)
+        for c in (result.get("satisfied_criteria") or [])
+        if isinstance(c, dict)
+    ]
+    holder["missing"] = [
+        _eligibility_line(c, met=False)
+        for c in (result.get("unsatisfied_criteria") or [])
+        if isinstance(c, dict)
+    ]
+    holder["unknown"] = [
+        _eligibility_line(c, met=False)
+        for c in (result.get("unknown_criteria") or [])
+        if isinstance(c, dict)
+    ]
+
+
+def _collect_requirements(
+    result: dict[str, Any],
+    documents: list[str],
+    steps: list[str],
+) -> None:
+    """Collect required documents and application steps from get_requirements."""
+    for doc in result.get("documents") or []:
+        if isinstance(doc, str) and doc.strip():
+            documents.append(doc)
+    for step in result.get("application_steps") or []:
+        if isinstance(step, str) and step.strip():
+            steps.append(step)
 
 
 def _infer_status(answer: str, events: list[dict[str, str]]) -> str:

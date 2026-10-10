@@ -431,8 +431,8 @@
     }
     var rows = [
       row("met", "circle-check", "Criteria you appear to meet", elig.met),
-      row("missing", "circle-alert", "Information missing", elig.missing),
-      row("unknown", "info", "Could not be determined", elig.unknown)
+      row("missing", "circle-alert", "Does not meet criteria", elig.missing),
+      row("unknown", "info", "Information missing", elig.unknown)
     ].filter(Boolean);
 
     return h("div", {}, [

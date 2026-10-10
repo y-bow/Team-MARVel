@@ -2,6 +2,8 @@
 app.py — EduSaarthi AI Flask application.
 
 Endpoints:
+  GET  /             — serves the static frontend (frontend/index.html)
+  GET  /<path>       — serves frontend assets (css/, js/, assets/)
   GET  /health       — liveness check, no secrets exposed
   POST /api/chat     — single-turn or multi-turn AI conversation
 
@@ -11,6 +13,7 @@ Design rules:
   - Request and response validation happens before touching the agent.
   - ProviderError maps to its http_status code.
   - ConfigurationError at startup → server refuses to start (fail fast).
+  - Tool event statuses are normalised to completed/failed for the client.
 """
 
 from __future__ import annotations
@@ -20,16 +23,44 @@ import sys
 import traceback
 from pathlib import Path
 
-# Ensure repo root is on sys.path when executed directly
+# Ensure the repository root is importable so both `python backend/app.py`
+# (direct execution) and `python -m backend.app` work.
 _repo_root = str(Path(__file__).resolve().parent.parent)
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
-from flask import Flask, jsonify, request, g
+from flask import Flask, jsonify, request, send_from_directory
 
 from backend.config import load_config, ConfigurationError
 from backend.repository import JSONRepository
 from backend.agent import AgentLoop, GeminiProvider, ProviderError, build_tool_registry
+
+# Absolute path to the frontend directory (served as static files).
+FRONTEND_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend"
+)
+
+# Tool event statuses as seen by the client. Successful tools are "completed",
+# errors are "failed" so the UI never renders a failure as success.
+_EVENT_STATUS_MAP = {
+    "ok": "completed",
+    "error": "failed",
+    "queued": "queued",
+    "running": "running",
+    "completed": "completed",
+    "failed": "failed",
+}
+
+
+def _normalise_events(events):
+    """Return a copy of *events* with statuses mapped to the client vocabulary."""
+    normalised = []
+    for event in events or []:
+        item = dict(event)
+        status = str(item.get("status", "")).lower()
+        item["status"] = _EVENT_STATUS_MAP.get(status, "completed")
+        normalised.append(item)
+    return normalised
 
 # ---------------------------------------------------------------------------
 # Application factory
@@ -42,7 +73,14 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
     Accepts optional overrides for config, repository, and provider so that
     tests can inject mocks without touching environment variables.
     """
-    app = Flask(__name__)
+    # Serve the static frontend from the repository's frontend/ directory.
+    # static_url_path="" makes assets resolve at "/css/...", "/js/..." etc.,
+    # and the explicit "/" route below serves index.html.
+    app = Flask(
+        __name__,
+        static_folder=FRONTEND_DIR,
+        static_url_path="",
+    )
 
     # ------------------------------------------------------------------
     # Load config (fail fast on missing credentials)
@@ -101,6 +139,11 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
     # ------------------------------------------------------------------
     # Routes
     # ------------------------------------------------------------------
+
+    @app.get("/")
+    def index():
+        """Serve the single-page frontend."""
+        return send_from_directory(FRONTEND_DIR, "index.html")
 
     @app.get("/health")
     def health():
@@ -205,21 +248,34 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
                 "code": "AGENT_ERROR",
             }), 500
 
-        resp_payload = {
+        payload = {
             "conversation_id": result.conversation_id,
             "status": result.status,
             "answer": result.answer,
             "sources": result.sources,
-            "events": result.events,
+            "events": _normalise_events(result.events),
             "action_plan": result.action_plan,
         }
-        if result.status == "needs_clarification":
-            resp_payload["clarification"] = {
-                "question": result.answer,
-                "options": [],
-            }
 
-        return jsonify(resp_payload), 200
+        # Clarification bridge: the structured object is always present when the
+        # agent is asking a follow-up question (agent already sets it; this is a
+        # defensive fallback so the frontend never sees a bare status).
+        if result.clarification:
+            payload["clarification"] = result.clarification
+        elif result.status == "needs_clarification":
+            payload["clarification"] = {"question": result.answer, "options": []}
+
+        # Optional fields are included only when the tool results support them.
+        if result.matches:
+            payload["matches"] = result.matches
+        if result.eligibility:
+            payload["eligibility"] = result.eligibility
+        if result.documents:
+            payload["documents"] = result.documents
+        if result.steps:
+            payload["steps"] = result.steps
+
+        return jsonify(payload), 200
 
     return app
 

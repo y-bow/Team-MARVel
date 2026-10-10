@@ -1,100 +1,101 @@
-# EduSaarthi AI — Frontend
+# EduSaarthi AI
 
-Frontend for **EduSaarthi AI**, an AI-powered Student Opportunity Navigator
-(scholarships and education services). Built for the DevFest on Campus 2026
-hackathon with plain HTML, CSS and JavaScript — no frameworks, no build step.
+An AI-powered Student Opportunity Navigator for scholarships and education
+services — built for the DevFest on Campus 2026 hackathon.
 
-## Run it locally
+The backend (Flask + Gemini + tool-based agent) also serves the static
+frontend, so a single command runs the whole app.
 
-The frontend is fully static. Serve the `frontend/` directory with any static
-server, for example:
+## Quick start (single-command run)
+
+**Local demo URL: http://localhost:5000**
 
 ```bash
-python3 -m http.server 8000      # from inside frontend/
+# 1. Install dependencies (Python 3.10+)
+pip install -r requirements.txt
+
+# 2. Configure the Gemini API key (server fails fast if missing)
+cp .env.example .env
+# then edit .env and set GEMINI_API_KEY=<your key>
+
+# 3. Run the app — backend + frontend together
+python -m backend.app
 ```
 
-Then open http://localhost:8000
+This serves everything on one origin:
 
-You can also open `frontend/index.html` directly, but a server is recommended
-(and required to call the same-origin backend).
+| URL | What it is |
+|---|---|
+| `http://localhost:5000/` | Frontend UI (`frontend/index.html`) |
+| `GET /health` | Health check (status, model, scheme count) |
+| `POST /api/chat` | Chat / investigation endpoint |
 
-## Backend integration
+`python backend/app.py` works too. For production use Gunicorn:
 
-The frontend calls a single endpoint, which the backend teammate implements at:
-
+```bash
+gunicorn "backend.app:create_app()" --bind 0.0.0.0:$PORT --workers 2 --timeout 120
 ```
-POST /api/chat
-```
-
-Request body:
-
-```json
-{
-  "message": "Find scholarships for my course",
-  "conversation_id": null
-}
-```
-
-Response body (the fields the frontend consumes):
-
-```json
-{
-  "conversation_id": "demo-conversation",
-  "status": "completed",
-  "answer": "A concise response grounded in retrieved records.",
-  "sources": [
-    { "id": "SCHEME-001", "title": "Illustrative scheme", "url": "https://example.org" }
-  ],
-  "events": [
-    { "tool": "search_schemes", "status": "completed", "summary": "Retrieved relevant records.", "detail": "optional expandable result detail" }
-  ],
-  "action_plan": [
-    { "title": "Review the eligibility criteria", "completed": false }
-  ]
-}
-```
-
-Optional forward-compatible fields are rendered only when the backend provides
-them (never fabricated): `matches[]`, `eligibility{met,missing,unknown}`,
-`documents[]`, `steps[]`, `clarification{question,options[]}`. See
-`js/api.js` for the full normalisation rules.
-
-Notes for the backend:
-
-- `status` is one of `completed`, `clarification`, `no_results`, `failed`.
-- `events[].status` is one of `queued`, `running`, `completed`, `failed`.
-- Deploying frontend and backend separately? The frontend uses a relative
-  base URL by default. Set `window.EDUSAARTHI_API_BASE` (before `app.js`
-  loads) or `localStorage`/build config as needed to point at the backend.
-- External source URLs must be absolute `http`/`https` links; anything else is
-  dropped before rendering.
 
 ## Demo mode
 
-When the backend is unavailable, toggle **Demo mode** in the sidebar. All demo
-responses come from `js/demo-data.js`, are deterministic and are labelled
-"illustrative" throughout the UI. Demo is never silently substituted for real
-results: switching is explicit, and the interface shows an amber banner.
+If the backend (or its Gemini key) is unavailable, toggle **Demo mode** in the
+sidebar. Demo responses come from `frontend/js/demo-data.js`, are deterministic
+and are labelled "illustrative" throughout the UI.
 
-## Configuration & persistence
+## Running tests
 
-- Investigation history and saved plans persist in `localStorage`
-  (`edusaarthi.v1`) in the user's own browser. Only what the user typed is
-  stored; no credentials are kept.
-- `js/api.js` validates every response field and rejects invalid external links
-  before they become clickable.
+Offline tests use mocked Gemini responses — no API key or paid calls:
 
-## Files
+```bash
+pytest
+```
+
+Integration tests against the live API are skipped unless `GEMINI_API_KEY` is
+set:
+
+```bash
+GEMINI_API_KEY=your_key pytest tests/test_integration.py -v
+```
+
+## Project structure
 
 ```
-index.html        Structure, semantic shell, inline SVG icon sprite
-css/styles.css    Design tokens, layout, base typography
-css/components.css Buttons, messages, activities, result components
-css/responsive.css Tablet/mobile behaviour
-js/app.js         Bootstrap, event handling, orchestration
-js/api.js         HTTP client + response/URL validation
-js/state.js       Client state + localStorage persistence
-js/render.js      Safe DOM rendering (textContent, no innerHTML)
-js/demo-data.js   Clearly labelled illustrative fixtures
-assets/           Reserved for static assets
+frontend/        Static UI (HTML/CSS/JS, no build step) — see frontend/README.md
+backend/         Flask API, LLM agent, tools — see backend/README.md
+data/schemes.json  Verified scheme knowledge base
+tests/           Pytest suite and fixtures (offline by default)
 ```
+
+## Configuration
+
+Environment variables (see `.env.example`):
+
+- `GEMINI_API_KEY` — required. Google Gemini API key from
+  https://aistudio.google.com/
+- `GEMINI_MODEL` — default `gemini-2.0-flash`
+- `DATA_PATH` — default `data/schemes.json`
+- `HOST` / `PORT` — default `0.0.0.0:5000`
+- `MAX_ITERATIONS`, `MAX_SEARCH_RESULTS`, `MAX_MESSAGE_LENGTH`,
+  `MAX_ANSWER_LENGTH`, `DEADLINE_STALE_DAYS`, `APP_VERSION` — optional knobs
+
+## Frontend-only development
+
+To iterate on the UI without the backend, serve `frontend/` with any static
+server and use Demo mode:
+
+```bash
+python3 -m http.server 8000     # from inside frontend/
+```
+
+pointing your browser at http://localhost:8000. The frontend calls a relative
+`/api/chat` by default; set `window.EDUSAARTHI_API_BASE` to the backend URL
+when hosting them separately.
+
+## Safety / honesty rules
+
+- Answers are grounded in tool results; criteria, deadlines and documents are
+  never invented.
+- Eligibility is deterministic and gaps/missing info are reported honestly.
+- API keys and secrets stay on the server and are never exposed to the client.
+- Source URLs must be absolute `http(s)` links; unverified/unchecked deadlines
+  are always flagged.

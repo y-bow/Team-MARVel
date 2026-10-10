@@ -168,13 +168,39 @@ gunicorn "backend.app:create_app()" \
     {"id": "scheme-id", "title": "Scheme Name", "url": "https://..."}
   ],
   "events": [
-    {"tool": "search_schemes", "status": "ok", "summary": "Found 3 scheme(s)"}
+    {"tool": "search_schemes", "status": "completed", "summary": "Found 3 scheme(s)"}
   ],
   "action_plan": [
     {"title": "...", "action_type": "apply", "completed": false, "requires_user_verification": true}
-  ]
+  ],
+  "matches": [
+    {"id": "scheme-id", "title": "Scheme Name", "summary": "...", "url": "https://..."}
+  ],
+  "eligibility": {
+    "met": ["education_level (required: One of: ['10th', 'UG'])", "..."],
+    "missing": ["percentage (required: >= 55%)", "..."],
+    "unknown": ["annual_family_income (required: <= ₹250,000)"]
+  },
+  "documents": ["Aadhaar card", "..."],
+  "steps": ["Step 1: Register", "..."],
+  "clarification": {"question": "Which state do you live in?", "options": []}
 }
 ```
+
+`events[].status` is normalised at the API boundary and is always one of
+`queued`, `running`, `completed`, `failed`. Internal tool statuses `ok`/`error`
+are never exposed to the client.
+
+Optional fields are included only when the supporting tools ran and returned
+data (they are never fabricated):
+
+- `matches[]` — from `search_schemes`
+- `eligibility{met,missing,unknown}` — from `check_eligibility`
+  (`satisfied_criteria` → `met`, `unsatisfied_criteria` → `missing`,
+  `unknown_criteria` → `unknown`)
+- `documents[]`, `steps[]` — from `get_requirements`
+- `clarification{question,options[]}` — present when `status` is
+  `needs_clarification`
 
 **Status values:**
 
