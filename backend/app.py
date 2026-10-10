@@ -34,7 +34,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from backend.config import load_config, ConfigurationError
 from backend.repository import JSONRepository
-from backend.agent import AgentLoop, OpenRouterProvider, ProviderError, build_tool_registry
+from backend.agent import AgentLoop, GeminiProvider, ProviderError, build_tool_registry
 
 # Absolute path to the frontend directory (served as static files).
 FRONTEND_DIR = os.path.join(
@@ -103,10 +103,7 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
     # ------------------------------------------------------------------
     # Initialise provider and agent loop
     # ------------------------------------------------------------------
-    prov = provider or OpenRouterProvider(
-        api_key=cfg.openrouter_api_key,
-        base_url=cfg.openrouter_base_url,
-    )
+    prov = provider or GeminiProvider(api_key=cfg.gemini_api_key)
     registry = build_tool_registry(repo, cfg)
     agent = AgentLoop(provider=prov, tool_registry=registry, config=cfg)
 
@@ -160,7 +157,7 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
         return jsonify({
             "status": "ok",
             "version": cfg_.version,
-            "model": cfg_.openrouter_model,
+            "model": cfg_.gemini_model,
             "data_loaded": True,
             "scheme_count": repo_.count(),
         }), 200

@@ -60,9 +60,9 @@ def _optional_int(name: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class Config:
-    # OpenRouter credentials (OpenAI-compatible API)
-    openrouter_api_key: str
-    openrouter_model: str
+    # Gemini credentials
+    gemini_api_key: str
+    gemini_model: str
 
     # Flask server
     host: str
@@ -97,8 +97,8 @@ def load_config() -> Config:
     Never logs the API key.
     """
     return Config(
-        openrouter_api_key=_require("OPENROUTER_API_KEY"),
-        openrouter_model=_require("OPENROUTER_MODEL"),
+        gemini_api_key=_require("GEMINI_API_KEY"),
+        gemini_model=_optional("GEMINI_MODEL", "gemini-2.0-flash"),
         openrouter_base_url=_optional(
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
         ),

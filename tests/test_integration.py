@@ -1,36 +1,36 @@
 """
-test_integration.py — optional integration tests against the live OpenRouter API.
+test_integration.py — optional integration tests against the live Gemini API.
 
-These tests are SKIPPED unless OPENROUTER_API_KEY is set in the environment.
+These tests are SKIPPED unless EDUSAARTHI_LIVE_TESTS=1 is set.
 They make real API calls and should NOT be run in CI without a budget guard.
 
 Run manually:
-    OPENROUTER_API_KEY=your_key pytest tests/test_integration.py -v
+    EDUSAARTHI_LIVE_TESTS=1 GEMINI_API_KEY=your_key pytest tests/test_integration.py -v
 """
 
 import os
 import pytest
 
-SKIP_REASON = "OPENROUTER_API_KEY not set — skipping integration tests"
+SKIP_REASON = (
+    "Live integration tests disabled. "
+    "Set EDUSAARTHI_LIVE_TESTS=1 (with GEMINI_API_KEY) to run."
+)
 pytestmark = pytest.mark.skipif(
-    not os.getenv("OPENROUTER_API_KEY"), reason=SKIP_REASON
+    os.getenv("EDUSAARTHI_LIVE_TESTS") != "1", reason=SKIP_REASON
 )
 
 
 @pytest.fixture(scope="module")
 def live_client():
-    """Flask test client with real OpenRouter provider and real data."""
+    """Flask test client with real Gemini provider and real data."""
     from backend.config import load_config
     from backend.repository import JSONRepository
-    from backend.agent import OpenRouterProvider, AgentLoop, build_tool_registry
+    from backend.agent import GeminiProvider, AgentLoop, build_tool_registry
     from backend.app import create_app
 
     cfg = load_config()
     repo = JSONRepository(cfg.data_path)
-    provider = OpenRouterProvider(
-        api_key=cfg.openrouter_api_key,
-        base_url=cfg.openrouter_base_url,
-    )
+    provider = GeminiProvider(api_key=cfg.gemini_api_key)
     registry = build_tool_registry(repo, cfg)
     agent = AgentLoop(provider=provider, tool_registry=registry, config=cfg)
     app = create_app(config=cfg, repository=repo, provider=provider)
@@ -71,7 +71,6 @@ def test_integration_eligibility_check(live_client):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["status"] in ("completed", "needs_clarification")
-    # Should have used at least one tool
     assert len(data["events"]) > 0
 
 

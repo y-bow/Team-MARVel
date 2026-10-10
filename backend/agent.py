@@ -663,7 +663,7 @@ class AgentLoop:
 
             response = self._provider.generate(
                 contents=history,
-                model=self._config.openrouter_model,
+                model=self._config.gemini_model,
                 tools=[_GEMINI_TOOL],
                 system_instruction=SYSTEM_PROMPT,
             )
