@@ -1,0 +1,195 @@
+/* ============================================================================
+   EduSaarthi AI — responsive.css
+   Tablet and mobile behaviour, off-canvas navigation and layout reflow.
+   ========================================================================== */
+
+/* --------------------------- Compact desktop --------------------------- */
+@media (max-width: 1240px) {
+  :root {
+    --sidebar-w: 236px;
+    --panel-w: 360px;
+  }
+  .topbar,
+  .banner {
+    padding-left: var(--sp-5);
+    padding-right: var(--sp-5);
+  }
+  .conversation,
+  .composer-wrap,
+  .list-view {
+    padding-left: var(--sp-5);
+    padding-right: var(--sp-5);
+  }
+}
+
+/* --------------------------- Tablet: off-canvas sidebar --------------------------- */
+@media (max-width: 1080px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr) var(--panel-w);
+  }
+  .main {
+    grid-column: 1;
+  }
+  .panel {
+    grid-column: 2;
+  }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 288px;
+    max-width: 84vw;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform var(--t-slow);
+    box-shadow: var(--shadow-lg);
+    will-change: transform;
+  }
+  body[data-sidebar-open="true"] .sidebar {
+    transform: translateX(0);
+  }
+  .topbar__menu {
+    display: inline-grid;
+  }
+}
+
+/* --------------------------- Mobile / small tablet --------------------------- */
+@media (max-width: 860px) {
+  :root {
+    --topbar-h: 58px;
+  }
+
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .main {
+    grid-column: 1;
+  }
+
+  .mobile-tabs {
+    display: inline-flex;
+    background: var(--surface-sunken);
+    border-radius: var(--r-md);
+    padding: 2px;
+    gap: 2px;
+  }
+  .mobile-tabs__btn {
+    padding: 5px 12px;
+    border-radius: var(--r-sm);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted-strong);
+    transition: background var(--t-fast), color var(--t-fast);
+  }
+  .mobile-tabs__btn.is-active {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-xs);
+  }
+
+  .demo-badge {
+    display: none;
+  }
+  .topbar__right {
+    gap: var(--sp-3);
+  }
+
+  /* Panel becomes a full-screen sheet toggled by the mobile tab bar */
+  .panel {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    border-left: none;
+    transform: translateX(100%);
+    transition: transform var(--t-slow);
+    visibility: hidden;
+  }
+  body[data-mobile-view="panel"] .panel {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .panel__back {
+    display: inline-grid;
+  }
+
+  .composer-wrap {
+    padding-bottom: max(var(--sp-5), env(safe-area-inset-bottom));
+  }
+}
+
+/* --------------------------- Small phones --------------------------- */
+@media (max-width: 560px) {
+  .topbar {
+    gap: var(--sp-3);
+    padding: 0 var(--sp-4);
+  }
+  .topbar__title p {
+    display: none;
+  }
+  .topbar__title h1 {
+    font-size: 15px;
+  }
+
+  .conversation,
+  .composer-wrap,
+  .list-view {
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
+  }
+  .conversation {
+    padding-top: var(--sp-5);
+  }
+  .panel__body {
+    padding: var(--sp-4);
+  }
+
+  .starters {
+    grid-template-columns: 1fr;
+  }
+  .welcome {
+    padding-top: var(--sp-4);
+  }
+  .welcome__lead {
+    margin-bottom: var(--sp-6);
+  }
+
+  .msg__user-bubble {
+    max-width: 90%;
+  }
+
+  .list-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-3);
+  }
+}
+
+/* --------------------------- Reduced motion (motionless sheets) --------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .panel {
+    transition: none;
+  }
+}
+
+/* --------------------------- Panel back button (base) --------------------------- */
+.panel__back {
+  display: none;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--r-md);
+  color: var(--muted-strong);
+  place-items: center;
+}
+.panel__back:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.panel__back .icon {
+  width: 18px;
+  height: 18px;
+  transform: rotate(180deg);
+}
