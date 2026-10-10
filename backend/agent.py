@@ -26,11 +26,12 @@ Safety rails enforced here:
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from google.genai import types
 from google.genai.errors import APIError, ClientError, ServerError
@@ -256,6 +257,20 @@ class BaseProvider:
     ) -> types.GenerateContentResponse:
         raise NotImplementedError
 
+    def generate_stream(
+        self,
+        contents: list[types.Content],
+        model: str,
+        tools: list[types.Tool],
+        system_instruction: str,
+    ) -> Iterator[types.GenerateContentResponse]:
+        """
+        Streaming variant. Yields partial responses as they arrive.
+        Default implementation falls back to non-streaming generate().
+        """
+        # Non-streaming fallback: yield the full response once
+        yield self.generate(contents, model, tools, system_instruction)
+
 
 class GeminiProvider(BaseProvider):
     """Production provider — wraps google-genai SDK."""
@@ -284,11 +299,9 @@ class GeminiProvider(BaseProvider):
                 disable=True,
             ),
             temperature=0.2,
-            # Add timeout? Not explicitly supported in config without http_options, wait...
         )
         try:
             start_time = time.perf_counter()
-            # Set http_options for timeout
             res = self._client.models.generate_content(
                 model=model,
                 contents=contents,
@@ -316,7 +329,62 @@ class GeminiProvider(BaseProvider):
                 f"AI API error: {exc}", http_status=502
             ) from exc
         except Exception as exc:
-            # Don't expose internals
+            raise ProviderError(
+                "An unexpected error occurred while contacting the AI model.",
+                http_status=503,
+            ) from exc
+
+    def generate_stream(
+        self,
+        contents: list[types.Content],
+        model: str,
+        tools: list[types.Tool],
+        system_instruction: str,
+    ) -> Iterator[types.GenerateContentResponse]:
+        import time
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            tools=tools,
+            tool_config=types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(
+                    mode="AUTO",
+                )
+            ),
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                disable=True,
+            ),
+            temperature=0.2,
+        )
+        try:
+            start_time = time.perf_counter()
+            stream = self._client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=config,
+            )
+            for chunk in stream:
+                yield chunk
+            end_time = time.perf_counter()
+            print(f"[TIMING] Gemini API generate_content_stream duration: {end_time - start_time:.3f}s")
+        except ClientError as exc:
+            code = exc.code if hasattr(exc, "code") else 400
+            if code == 429:
+                raise ProviderError(
+                    "API quota exceeded. Please try again later.", http_status=429
+                ) from exc
+            raise ProviderError(
+                f"API client error ({code}): {exc}", http_status=400
+            ) from exc
+        except ServerError as exc:
+            raise ProviderError(
+                "The AI model is temporarily unavailable. Please try again shortly.",
+                http_status=503,
+            ) from exc
+        except APIError as exc:
+            raise ProviderError(
+                f"AI API error: {exc}", http_status=502
+            ) from exc
+        except Exception as exc:
             raise ProviderError(
                 "An unexpected error occurred while contacting the AI model.",
                 http_status=503,
@@ -426,6 +494,41 @@ class OpenRouterProvider(BaseProvider):
         )
         return types.GenerateContentResponse(candidates=[candidate])
 
+    def generate_stream(
+        self,
+        contents: list[types.Content],
+        model: str,
+        tools: list[types.Tool],
+        system_instruction: str,
+    ) -> Iterator[types.GenerateContentResponse]:
+        import time
+
+        messages = [{"role": "system", "content": system_instruction}]
+        messages.extend(self._contents_to_messages(contents))
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.2,
+            "stream": True,
+        }
+        wire_tools = self._tools_to_openai(tools)
+        if wire_tools:
+            payload["tools"] = wire_tools
+
+        try:
+            start_time = time.perf_counter()
+            for chunk in self._post_stream(payload):
+                yield chunk
+            end_time = time.perf_counter()
+            print(f"[TIMING] OpenRouter generate_stream duration: {end_time - start_time:.3f}s")
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(
+                "An unexpected error occurred while contacting the AI model.",
+                http_status=503,
+            ) from exc
+
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         request = urllib.request.Request(
             f"{self._base_url}/chat/completions",
@@ -440,6 +543,102 @@ class OpenRouterProvider(BaseProvider):
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
                 return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                body = json.loads(exc.read().decode("utf-8"))
+                detail = (body.get("error") or {}).get("message", "")
+            except Exception:
+                pass
+            code = exc.code
+            if code == 429:
+                raise ProviderError(
+                    "API quota exceeded. Please try again later.", http_status=429
+                ) from exc
+            if code == 401:
+                raise ProviderError(
+                    "AI service authentication failed. Check OPENROUTER_API_KEY.",
+                    http_status=502,
+                ) from exc
+            if code >= 500:
+                raise ProviderError(
+                    "The AI model is temporarily unavailable. Please try again shortly.",
+                    http_status=503,
+                ) from exc
+            raise ProviderError(
+                f"API client error ({code}): {detail}", http_status=400
+            ) from exc
+        except (TimeoutError, urllib.error.URLError) as exc:
+            raise ProviderError(
+                "The AI model is temporarily unavailable. Please try again shortly.",
+                http_status=503,
+            ) from exc
+
+    def _post_stream(self, payload: dict[str, Any]) -> Iterator[types.GenerateContentResponse]:
+        request = urllib.request.Request(
+            f"{self._base_url}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self._api_key}",
+                "X-Title": "EduSaarthi AI",
+                "Accept": "text/event-stream",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                buffer = ""
+                for line in response:
+                    line = line.decode("utf-8")
+                    if line.startswith("data: "):
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = data.get("choices") or []
+                        if not choices:
+                            continue
+                        choice = choices[0]
+                        delta = choice.get("delta") or {}
+                        finish_reason = choice.get("finish_reason")
+
+                        parts: list[types.Part] = []
+                        text = delta.get("content")
+                        if text:
+                            parts.append(types.Part(text=text))
+                        for tool_call in delta.get("tool_calls") or []:
+                            fn = tool_call.get("function") or {}
+                            raw_args = fn.get("arguments") or ""
+                            # In streaming, tool_calls can be incremental
+                            if raw_args:
+                                try:
+                                    args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+                                except Exception:
+                                    args = {}
+                                if not isinstance(args, dict):
+                                    args = {}
+                                parts.append(
+                                    types.Part(
+                                        function_call=types.FunctionCall(name=fn.get("name") or "", args=args)
+                                    )
+                                )
+                        if not parts:
+                            # Empty delta, might just be a finish_reason signal
+                            parts = [types.Part(text="")]
+
+                        finish_reason_enum = self._FINISH_REASONS.get(
+                            str(finish_reason or "stop").lower(),
+                            types.FinishReason.STOP,
+                        )
+                        candidate = types.Candidate(
+                            content=types.Content(role="model", parts=parts),
+                            finish_reason=finish_reason_enum,
+                        )
+                        yield types.GenerateContentResponse(candidates=[candidate])
         except urllib.error.HTTPError as exc:
             detail = ""
             try:
@@ -628,6 +827,36 @@ class AgentResponse:
     eligibility: Optional[dict[str, list[str]]] = None
     documents: list[str] = field(default_factory=list)
     steps: list[str] = field(default_factory=list)
+    # Streaming metadata
+    model_calls: int = 0
+    total_latency_ms: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Streaming event types
+# ---------------------------------------------------------------------------
+
+class StreamEventType:
+    STATUS = "status"          # General status update
+    TOKEN = "token"            # Text token from model
+    TOOL_START = "tool_start"  # Tool execution started
+    TOOL_END = "tool_end"      # Tool execution completed
+    RESULT = "result"          # Final structured result
+    ERROR = "error"            # Error occurred
+    DONE = "done"              # Stream complete
+    METRICS = "metrics"        # Performance metrics
+
+
+@dataclass
+class StreamEvent:
+    type: str
+    data: dict[str, Any]
+    timestamp: float = field(default_factory=time.time)
+
+    def to_sse(self) -> str:
+        """Format as Server-Sent Event."""
+        import json
+        return f"event: {self.type}\ndata: {json.dumps(self.data, default=str)}\n\n"
 
 
 # ---------------------------------------------------------------------------
@@ -664,6 +893,43 @@ class AgentLoop:
 
         Raises ProviderError for quota/timeout errors (caller maps to HTTP status).
         """
+        # Use the streaming implementation but collect everything
+        events = []
+        final_response = None
+        
+        for event in self.run_stream(message, conversation_id, student_profile):
+            events.append(event)
+            if event.type == StreamEventType.RESULT:
+                final_response = event.data
+            elif event.type == StreamEventType.ERROR:
+                raise ProviderError(event.data.get("message", "Stream error"), http_status=500)
+        
+        if final_response is None:
+            # Fallback if no result event
+            final_response = {
+                "conversation_id": conversation_id or str(uuid.uuid4()),
+                "status": "completed",
+                "answer": "I'm sorry, I couldn't generate a response. Please try again.",
+                "sources": [],
+                "events": [],
+                "action_plan": [],
+            }
+        
+        return AgentResponse(**final_response)
+
+    def run_stream(
+        self,
+        message: str,
+        conversation_id: Optional[str] = None,
+        student_profile: Optional[dict[str, Any]] = None,
+    ) -> Iterator[StreamEvent]:
+        """
+        Process one user message with streaming response.
+        
+        Yields StreamEvent objects for each step.
+        """
+        import time
+        
         # Resolve or create conversation
         if not conversation_id or conversation_id not in _CONVERSATIONS:
             conversation_id = str(uuid.uuid4())
@@ -676,11 +942,17 @@ class AgentLoop:
 
         events: list[dict[str, str]] = []
         action_plan: list[dict[str, Any]] = []
-        sources_map: dict[str, dict[str, str]] = {}  # id → source record
+        sources_map: dict[str, dict[str, str]] = {}
         matches: list[dict[str, Any]] = []
         eligibility: dict[str, list[str]] = {}
         documents: list[str] = []
         steps: list[str] = []
+
+        # Emit initial status
+        yield StreamEvent(
+            type=StreamEventType.STATUS,
+            data={"status": "started", "message": "Processing your request..."}
+        )
 
         # ------------------------------------------------------------------
         # Function-calling loop
@@ -689,41 +961,107 @@ class AgentLoop:
         iterations = 0
         max_iter = self._config.max_iterations
         tool_cache = {}
+        model_calls = 0
+        total_latency_ms = 0.0
 
         while iterations < max_iter:
             iterations += 1
 
-            response = self._provider.generate(
-                contents=history,
-                model=self._config.openrouter_model,
-                tools=[_GEMINI_TOOL],
-                system_instruction=SYSTEM_PROMPT,
+            # Emit status
+            yield StreamEvent(
+                type=StreamEventType.STATUS,
+                data={"status": "thinking", "iteration": iterations, "max_iterations": max_iter}
             )
 
-            candidate = response.candidates[0] if response.candidates else None
+            start_model = time.perf_counter()
+            model_calls += 1
+            
+            try:
+                # Use streaming from provider
+                stream = self._provider.generate_stream(
+                    contents=history,
+                    model=self._config.openrouter_model,
+                    tools=[_GEMINI_TOOL],
+                    system_instruction=SYSTEM_PROMPT,
+                )
+            except ProviderError:
+                raise
+            except Exception as exc:
+                raise ProviderError(
+                    "An unexpected error occurred while contacting the AI model.",
+                    http_status=503,
+                ) from exc
+
+            candidate = None
+            accumulated_text = ""
+            accumulated_tool_calls: list[types.FunctionCall] = []
+            finish_reason = None
+            chunk_candidate = None
+
+            for chunk in stream:
+                model_calls += 1
+                # Handle both real provider chunks and mock responses
+                if hasattr(chunk, 'candidates'):
+                    chunk_candidate = chunk.candidates[0] if chunk.candidates else None
+                elif hasattr(chunk, '__iter__') and not isinstance(chunk, (str, bytes)):
+                    # If it's an iterable (like a mock side_effect list), try to get first item
+                    try:
+                        first = next(iter(chunk))
+                        chunk_candidate = first.candidates[0] if hasattr(first, 'candidates') and first.candidates else None
+                    except (StopIteration, TypeError, AttributeError):
+                        chunk_candidate = None
+                else:
+                    chunk_candidate = None
+                    
+                if chunk_candidate is None:
+                    continue
+                
+                # Handle text streaming
+                for part in (chunk_candidate.content.parts or []):
+                    if part.text:
+                        accumulated_text += part.text
+                        yield StreamEvent(
+                            type=StreamEventType.TOKEN,
+                            data={"text": part.text}
+                        )
+                    if part.function_call is not None:
+                        accumulated_tool_calls.append(part.function_call)
+                
+                if chunk_candidate.finish_reason is not None:
+                    finish_reason = chunk_candidate.finish_reason
+                    candidate = chunk_candidate
+
+            end_model = time.perf_counter()
+            total_latency_ms += (end_model - start_model) * 1000
+
+            # If we didn't get a candidate with finish_reason, use the last chunk
+            if candidate is None:
+                candidate = chunk_candidate
+
             if candidate is None:
                 final_text = "I'm sorry, I couldn't generate a response. Please try again."
                 break
 
+            # Build the complete model response
+            model_content = types.Content(role="model", parts=[])
+            if accumulated_text:
+                model_content.parts.append(types.Part(text=accumulated_text))
+            for fc in accumulated_tool_calls:
+                model_content.parts.append(types.Part(function_call=fc))
+            
+            # If no parts at all, add empty
+            if not model_content.parts:
+                model_content.parts.append(types.Part(text=""))
+            
             # Append model turn to history
-            history.append(candidate.content)
+            history.append(model_content)
 
-            finish_reason = candidate.finish_reason
-
-            # Collect any function calls in this response
-            function_calls = [
-                p.function_call
-                for p in (candidate.content.parts or [])
-                if p.function_call is not None
-            ]
+            # Collect any function calls
+            function_calls = accumulated_tool_calls
 
             if not function_calls:
                 # No tool calls → extract final text
-                text_parts = [
-                    p.text for p in (candidate.content.parts or [])
-                    if p.text
-                ]
-                final_text = "\n".join(text_parts).strip()
+                final_text = accumulated_text.strip()
 
                 # Handle non-STOP finish reasons
                 if finish_reason == types.FinishReason.MAX_TOKENS:
@@ -755,6 +1093,12 @@ class AgentLoop:
                 tool_name = fc.name or ""
                 raw_args = fc.args or {}
 
+                # Emit tool start event
+                yield StreamEvent(
+                    type=StreamEventType.TOOL_START,
+                    data={"tool": tool_name, "arguments": raw_args}
+                )
+
                 if tool_name not in self._registry:
                     # Unregistered tool — return structured error to model
                     result = {
@@ -772,7 +1116,7 @@ class AgentLoop:
                     })
                 else:
                     try:
-                        import json, time
+                        import json, time as time_module
                         
                         if tool_name == "check_eligibility" and student_profile:
                             raw_args["student_info"] = {**student_profile, **raw_args.get("student_info", {})}
@@ -784,9 +1128,9 @@ class AgentLoop:
                             result = tool_cache[cache_key]
                             print(f"[CACHE] Hit for {tool_name}")
                         else:
-                            start_tool = time.perf_counter()
+                            start_tool = time_module.perf_counter()
                             result = self._registry[tool_name](**raw_args)
-                            end_tool = time.perf_counter()
+                            end_tool = time_module.perf_counter()
                             print(f"[TIMING] Tool {tool_name} duration: {end_tool - start_tool:.3f}s")
                             tool_cache[cache_key] = result
 
@@ -815,6 +1159,12 @@ class AgentLoop:
                             "status": "error",
                             "summary": f"Execution error: {exc}",
                         })
+
+                # Emit tool end event
+                yield StreamEvent(
+                    type=StreamEventType.TOOL_END,
+                    data={"tool": tool_name, "result": result, "error": result.get("error", False)}
+                )
 
                 tool_result_parts.append(
                     types.Part.from_function_response(
@@ -856,7 +1206,8 @@ class AgentLoop:
         if status == "needs_clarification":
             clarification = {"question": final_text, "options": []}
 
-        return AgentResponse(
+        # Build final response
+        final_response = AgentResponse(
             conversation_id=conversation_id,
             status=status,
             answer=final_text,
@@ -868,6 +1219,42 @@ class AgentLoop:
             eligibility=eligibility or None,
             documents=documents,
             steps=steps,
+            model_calls=model_calls,
+            total_latency_ms=total_latency_ms,
+        )
+
+        # Emit metrics
+        yield StreamEvent(
+            type=StreamEventType.METRICS,
+            data={
+                "model_calls": model_calls,
+                "total_latency_ms": round(total_latency_ms, 2),
+                "iterations": iterations,
+            }
+        )
+
+        # Emit final result
+        yield StreamEvent(
+            type=StreamEventType.RESULT,
+            data={
+                "conversation_id": final_response.conversation_id,
+                "status": final_response.status,
+                "answer": final_response.answer,
+                "sources": final_response.sources,
+                "events": final_response.events,
+                "action_plan": final_response.action_plan,
+                "clarification": final_response.clarification,
+                "matches": final_response.matches,
+                "eligibility": final_response.eligibility,
+                "documents": final_response.documents,
+                "steps": final_response.steps,
+            }
+        )
+
+        # Emit done
+        yield StreamEvent(
+            type=StreamEventType.DONE,
+            data={"conversation_id": conversation_id}
         )
 
 

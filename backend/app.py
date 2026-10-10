@@ -5,7 +5,8 @@ Endpoints:
   GET  /             — serves the static frontend (frontend/index.html)
   GET  /<path>       — serves frontend assets (css/, js/, assets/)
   GET  /health       — liveness check, no secrets exposed
-  POST /api/chat     — single-turn or multi-turn AI conversation
+  POST /api/chat     — single-turn or multi-turn AI conversation (non-streaming)
+  POST /api/chat/stream — streaming AI conversation via SSE
 
 Design rules:
   - NEVER expose stack traces, API keys, or internal paths to clients.
@@ -18,10 +19,12 @@ Design rules:
 
 from __future__ import annotations
 
+import json
 import os
-import uuid
 import sys
+import time
 import traceback
+import uuid
 from pathlib import Path
 
 # Ensure the repository root is importable so both `python backend/app.py`
@@ -30,11 +33,11 @@ _repo_root = str(Path(__file__).resolve().parent.parent)
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 
 from backend.config import load_config, ConfigurationError
 from backend.repository import JSONRepository
-from backend.agent import AgentLoop, OpenRouterProvider, ProviderError, build_tool_registry
+from backend.agent import AgentLoop, OpenRouterProvider, ProviderError, build_tool_registry, StreamEvent, StreamEventType
 
 # Absolute path to the frontend directory (served as static files).
 FRONTEND_DIR = os.path.join(
@@ -303,6 +306,122 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
             payload["steps"] = result.steps
 
         return jsonify(payload), 200
+
+    @app.post("/api/chat/stream")
+    def chat_stream():
+        """
+        Streaming chat turn using Server-Sent Events (SSE).
+
+        Request body (JSON):
+          {
+            "message": "...",          (required, 1–MAX_MESSAGE_LENGTH chars)
+            "conversation_id": "..."   (optional; null to start a new conversation)
+          }
+
+        Response: text/event-stream with events:
+          - status: {status, message, iteration?, max_iterations?}
+          - token: {text}
+          - tool_start: {tool, arguments}
+          - tool_end: {tool, result, error}
+          - metrics: {model_calls, total_latency_ms, iterations}
+          - result: {conversation_id, status, answer, sources, events, action_plan, ...}
+          - done: {conversation_id}
+          - error: {message, code}
+        """
+        cfg_ = app.config["EDUSAARTHI_CONFIG"]
+        agent_ = app.config["EDUSAARTHI_AGENT"]
+
+        # -- Parse JSON body --
+        if not request.is_json:
+            return jsonify({
+                "error": "Request must have Content-Type: application/json.",
+                "code": "INVALID_CONTENT_TYPE",
+            }), 400
+
+        try:
+            body = request.get_json(force=False, silent=False)
+        except Exception:
+            return jsonify({
+                "error": "Request body is not valid JSON.",
+                "code": "INVALID_JSON",
+            }), 400
+
+        if body is None:
+            return jsonify({
+                "error": "Request body must be a JSON object.",
+                "code": "INVALID_JSON",
+            }), 400
+
+        # -- Validate message --
+        message = body.get("message")
+        if message is None:
+            return jsonify({
+                "error": "Field 'message' is required.",
+                "code": "MISSING_FIELD",
+            }), 400
+        if not isinstance(message, str):
+            return jsonify({
+                "error": "Field 'message' must be a string.",
+                "code": "INVALID_FIELD",
+            }), 400
+        message = message.strip()
+        if not message:
+            return jsonify({
+                "error": "Field 'message' must not be empty.",
+                "code": "INVALID_FIELD",
+            }), 400
+        max_len = cfg_.max_message_length
+        if len(message) > max_len:
+            return jsonify({
+                "error": f"Field 'message' exceeds maximum length of {max_len} characters.",
+                "code": "MESSAGE_TOO_LONG",
+            }), 400
+
+        # -- Validate conversation_id --
+        conversation_id = body.get("conversation_id")
+        if conversation_id is not None and not isinstance(conversation_id, str):
+            return jsonify({
+                "error": "Field 'conversation_id' must be a string or null.",
+                "code": "INVALID_FIELD",
+            }), 400
+        if isinstance(conversation_id, str):
+            conversation_id = conversation_id.strip() or None
+
+        # -- Validate student_profile --
+        student_profile = body.get("student_profile", {})
+        if not isinstance(student_profile, dict):
+            student_profile = {}
+
+        def generate():
+            """Generator that yields SSE events."""
+            try:
+                for event in agent_.run_stream(message=message, conversation_id=conversation_id, student_profile=student_profile):
+                    yield event.to_sse()
+            except ProviderError as exc:
+                app.logger.warning("ProviderError in stream: %s", exc)
+                error_event = StreamEvent(
+                    type=StreamEventType.ERROR,
+                    data={"message": str(exc), "code": "PROVIDER_ERROR", "http_status": exc.http_status}
+                )
+                yield error_event.to_sse()
+            except Exception as exc:
+                app.logger.error("Agent stream error: %s", traceback.format_exc())
+                error_event = StreamEvent(
+                    type=StreamEventType.ERROR,
+                    data={"message": "An unexpected error occurred. Please try again.", "code": "AGENT_ERROR"}
+                )
+                yield error_event.to_sse()
+
+        response = Response(
+            stream_with_context(generate()),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Accel-Buffering": "no",  # Disable nginx buffering
+                "Connection": "keep-alive",
+            }
+        )
+        return response
 
     return app
 

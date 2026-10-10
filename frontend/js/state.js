@@ -285,6 +285,37 @@
     });
   }
 
+  function appendEvent(event) {
+    var active = getActive();
+    if (!active) return;
+    commit(function () {
+      active.events = active.events || [];
+      active.events.push(event);
+      active.updatedAt = Date.now();
+    });
+  }
+
+  function replaceLastMessage(message) {
+    var active = getActive();
+    if (!active || !active.messages.length) return;
+    commit(function () {
+      active.messages[active.messages.length - 1] = message;
+      active.updatedAt = Date.now();
+    });
+  }
+
+  function removeLastMessageIfStreaming() {
+    var active = getActive();
+    if (!active || !active.messages.length) return;
+    var last = active.messages[active.messages.length - 1];
+    if (last && last.kind === "streaming") {
+      commit(function () {
+        active.messages.pop();
+        active.updatedAt = Date.now();
+      });
+    }
+  }
+
   function setRequest(patch) {
     commit(function (s) {
       s.request = Object.assign({ status: "idle", error: null, lastMessage: null }, s.request, patch);
@@ -441,6 +472,9 @@
     renameActiveFromMessage: renameActiveFromMessage,
     setConversationId: setConversationId,
     appendMessage: appendMessage,
+    appendEvent: appendEvent,
+    replaceLastMessage: replaceLastMessage,
+    removeLastMessageIfStreaming: removeLastMessageIfStreaming,
     setRequest: setRequest,
     setEvents: setEvents,
     setResult: setResult,

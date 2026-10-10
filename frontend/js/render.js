@@ -220,6 +220,10 @@
     var bodyChildren = [];
     if (message.kind === "clarification") {
       bodyChildren.push(renderClarificationCard({ question: message.text, options: message.options || [] }));
+    } else if (message.kind === "streaming") {
+      bodyChildren.push(
+        h("div", { class: "msg__text msg__text--streaming", id: "streaming-msg-" + message.id, text: message.text || "" })
+      );
     } else {
       bodyChildren.push(renderMarkdown(message.text, "msg__text"));
     }
@@ -974,6 +978,18 @@
     return refs;
   }
 
+  function updateStreamingMessage(messageId, text) {
+    var el = document.getElementById("streaming-msg-" + messageId);
+    if (el) {
+      el.textContent = text;
+      // Auto-scroll
+      var conv = refs.conversation;
+      if (conv) {
+        conv.scrollTop = conv.scrollHeight;
+      }
+    }
+  }
+
   window.EduRender = {
     init: init,
     render: render,
@@ -983,6 +999,7 @@
     h: h,
     svgIcon: svgIcon,
     hydrateStaticIcons: hydrateStaticIcons,
-    formatDateTime: formatDateTime
+    formatDateTime: formatDateTime,
+    updateStreamingMessage: updateStreamingMessage
   };
 })();

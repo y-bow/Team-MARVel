@@ -31,6 +31,7 @@
 
     // Kept on every state change.
     State.subscribe(renderTick);
+    Render.initStreaming(renderStreamingToken);
 
     wireEvents();
     renderTick(State.get());
@@ -40,6 +41,95 @@
   function renderTick(state) {
     Render.render(state);
     updateComposer(state);
+  }
+
+  /* ------------------------------- streaming ------------------------------- */
+
+  var currentStreamController = null;
+  var streamingMessageId = null;
+  var streamingText = "";
+
+  function renderStreamingToken(token) {
+    streamingText += token;
+    Render.updateStreamingMessage(streamingMessageId, streamingText);
+  }
+
+  function handleStreamEvent(event) {
+    var type = event.type;
+    var data = event.data;
+    if (type === "status") {
+      // Could show thinking status
+    } else if (type === "tool_start") {
+      State.appendEvent({
+        id: State.uid("evt"),
+        tool: data.tool,
+        status: "running",
+        summary: "Starting " + data.tool + "...",
+        detail: JSON.stringify(data.arguments, null, 2)
+      });
+    } else if (type === "tool_end") {
+      var status = data.error ? "failed" : "completed";
+      State.appendEvent({
+        id: State.uid("evt"),
+        tool: data.tool,
+        status: status,
+        summary: data.tool + " " + (data.error ? "failed" : "completed"),
+        detail: JSON.stringify(data.result, null, 2)
+      });
+    } else if (type === "metrics") {
+      // Could show metrics
+    }
+  }
+
+  function handleStreamResult(result) {
+    var text = State.get().request.lastMessage || "";
+    State.setConversationId(result.conversation_id);
+    State.setEvents(result.events || []);
+    State.setResult(result);
+    State.setRequest({ status: "idle", error: null, lastMessage: text });
+
+    if (result.status === "failed") {
+      State.setRequest({
+        status: "error",
+        error: { message: "The investigation could not be completed. Review the failed activity in the Investigation panel, then retry with the same or adjusted details.", code: "failed" },
+        lastMessage: text
+      });
+    } else if (result.status === "clarification" && result.clarification) {
+      State.appendMessage({
+        id: State.uid("m"),
+        role: "assistant",
+        kind: "clarification",
+        text: result.clarification.question || result.answer || "Could you provide a little more detail?",
+        options: result.clarification.options || [],
+        ts: Date.now()
+      });
+    } else {
+      var fallback = result.status === "no_results"
+        ? "No relevant records were found in the available dataset for this request."
+        : "Here is what the investigation found. Full details, sources and next steps are in the Investigation panel.";
+      State.appendMessage({
+        id: State.uid("m"),
+        role: "assistant",
+        kind: result.status === "no_results" ? "no_results" : "answer",
+        text: result.answer || fallback,
+        ts: Date.now()
+      });
+    }
+
+    scrollConversation();
+  }
+
+  function handleStreamError(err, text) {
+    State.setRequest({
+      status: "error",
+      error: {
+        message: err && err.message ? err.message : "Something went wrong. Please try again.",
+        code: err && err.code ? err.code : "error"
+      },
+      lastMessage: text
+    });
+    toast(err && err.code === "network" ? "Could not reach the service." : "The request failed.", "warn");
+    scrollConversation();
   }
 
   /* ------------------------------- composer ------------------------------- */
@@ -112,10 +202,49 @@
     var isDemo = State.get().demoMode;
     var profile = State.get().studentProfile || {};
 
-    var promise = isDemo ? demoRequest(text) : Api.sendChat({ message: text, conversationId: conversationId, studentProfile: profile });
-    promise.then(handleResponse).catch(function (err) {
-      handleFailure(err, text);
+    // Create a placeholder assistant message for streaming
+    streamingMessageId = State.uid("m");
+    streamingText = "";
+    State.appendMessage({
+      id: streamingMessageId,
+      role: "assistant",
+      kind: "streaming",
+      text: "",
+      ts: Date.now()
     });
+
+    if (isDemo) {
+      // Demo mode doesn't stream
+      demoRequest(text).then(handleResponse).catch(function (err) {
+        handleFailure(err, text);
+      });
+    } else {
+      // Use streaming API
+      var controller = new AbortController();
+      currentStreamController = controller;
+
+      Api.sendChatStream({
+        message: text,
+        conversationId: conversationId,
+        studentProfile: profile,
+        signal: controller.signal,
+        onToken: renderStreamingToken,
+        onEvent: handleStreamEvent,
+        onResult: handleStreamResult,
+        onError: function (err) {
+          handleStreamError(err, text);
+        }
+      }).catch(function (err) {
+        // Errors are handled in onError, but catch any unhandled ones
+        if (err.name !== "AbortError") {
+          handleFailure(err, text);
+        }
+      }).finally(function () {
+        currentStreamController = null;
+        streamingMessageId = null;
+        streamingText = "";
+      });
+    }
   }
 
   function demoRequest(text) {
@@ -136,6 +265,17 @@
     State.setResult(response);
     State.setRequest({ status: "idle", error: null, lastMessage: text });
 
+    // Replace streaming message with final
+    State.replaceLastMessage({
+      id: State.uid("m"),
+      role: "assistant",
+      kind: response.status === "no_results" ? "no_results" : "answer",
+      text: response.answer || (response.status === "no_results"
+        ? "No relevant records were found in the available dataset for this request."
+        : "Here is what the investigation found. Full details, sources and next steps are in the Investigation panel."),
+      ts: Date.now()
+    });
+
     if (response.status === "failed") {
       State.setRequest({
         status: "error",
@@ -143,23 +283,12 @@
         lastMessage: text
       });
     } else if (response.status === "clarification" && response.clarification) {
-      State.appendMessage({
+      State.replaceLastMessage({
         id: State.uid("m"),
         role: "assistant",
         kind: "clarification",
         text: response.clarification.question || response.answer || "Could you provide a little more detail?",
         options: response.clarification.options || [],
-        ts: Date.now()
-      });
-    } else {
-      var fallback = response.status === "no_results"
-        ? "No relevant records were found in the available dataset for this request."
-        : "Here is what the investigation found. Full details, sources and next steps are in the Investigation panel.";
-      State.appendMessage({
-        id: State.uid("m"),
-        role: "assistant",
-        kind: response.status === "no_results" ? "no_results" : "answer",
-        text: response.answer || fallback,
         ts: Date.now()
       });
     }
@@ -184,6 +313,17 @@
     var last = State.get().request.lastMessage;
     if (!last || State.get().request.status === "loading") return;
     runRequest(last);
+  }
+
+  function cancelCurrent() {
+    if (currentStreamController) {
+      currentStreamController.abort();
+      currentStreamController = null;
+    }
+    // Remove streaming placeholder message
+    State.removeLastMessageIfStreaming();
+    State.setRequest({ status: "idle", error: null, lastMessage: null });
+    updateSendState();
   }
 
   function scrollConversation() {

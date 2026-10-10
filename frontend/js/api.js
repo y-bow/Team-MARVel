@@ -358,6 +358,162 @@
       });
   }
 
+  /**
+   * Send a streaming chat request using SSE.
+   * @param {{message: string, conversationId?: string|null, studentProfile?: object,
+   *          onToken?: function(string): void,
+   *          onEvent?: function(object): void,
+   *          onResult?: function(object): void,
+   *          onError?: function(Error): void,
+   *          signal?: AbortSignal}} options
+   * @returns {Promise<object>} final normalized response
+   */
+  function sendChatStream(options) {
+    options = options || {};
+    var message = typeof options.message === "string" ? options.message.trim() : "";
+    if (!message) {
+      return Promise.reject(new ApiError("Please enter a message.", "empty"));
+    }
+
+    var controller = null;
+    var timeoutId = null;
+    var signal = options.signal;
+    if (typeof AbortController !== "undefined") {
+      controller = new AbortController();
+      if (signal) {
+        if (signal.aborted) controller.abort();
+        else signal.addEventListener("abort", function () { controller.abort(); });
+      }
+      timeoutId = window.setTimeout(function () {
+        controller.abort();
+      }, REQUEST_TIMEOUT_MS);
+    }
+
+    var payload = {
+      message: message,
+      conversation_id: options.conversationId || null,
+      student_profile: options.studentProfile || null
+    };
+
+    var streamUrl = baseUrl + "/api/chat/stream";
+
+    return fetch(streamUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream"
+      },
+      body: JSON.stringify(payload),
+      signal: controller ? controller.signal : undefined,
+      credentials: "same-origin"
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          return readErrorDetail(res).then(function (detail) {
+            throw new ApiError(
+              detail || "The service responded with an error (" + res.status + ").",
+              "http",
+              { status: res.status }
+            );
+          });
+        }
+
+        var reader = res.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = "";
+        var finalResponse = null;
+        var done = false;
+
+        function processBuffer() {
+          var lines = buffer.split("\n\n");
+          buffer = lines.pop() || "";
+          lines.forEach(function (block) {
+            if (!block.trim()) return;
+            parseEventBlock(block);
+          });
+        }
+
+        function parseEventBlock(block) {
+          var eventType = "message";
+          var data = "";
+          block.split("\n").forEach(function (line) {
+            if (line.startsWith("event: ")) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              data += line.slice(6);
+            }
+          });
+          if (!data.trim()) return;
+          try {
+            var parsed = JSON.parse(data);
+            handleEvent(eventType, parsed);
+          } catch (e) {
+            // Ignore malformed events
+          }
+        }
+
+        function handleEvent(eventType, data) {
+          if (eventType === "token") {
+            if (typeof options.onToken === "function") {
+              options.onToken(data.text || "");
+            }
+          } else if (eventType === "status" || eventType === "tool_start" || eventType === "tool_end" || eventType === "metrics") {
+            if (typeof options.onEvent === "function") {
+              options.onEvent({ type: eventType, data: data });
+            }
+          } else if (eventType === "result") {
+            finalResponse = data;
+            if (typeof options.onResult === "function") {
+              options.onResult(data);
+            }
+          } else if (eventType === "error") {
+            var err = new ApiError(data.message || "Stream error", data.code || "stream_error", { status: data.http_status });
+            if (typeof options.onError === "function") {
+              options.onError(err);
+            }
+            throw err;
+          } else if (eventType === "done") {
+            done = true;
+          }
+        }
+
+        function read() {
+          return reader.read().then(function (_ref) {
+            var done = _ref.done;
+            var value = _ref.value;
+            if (done) {
+              if (buffer.trim()) processBuffer();
+              if (!finalResponse) {
+                throw new ApiError("Stream ended without result.", "incomplete");
+              }
+              return normalise(finalResponse);
+            }
+            buffer += decoder.decode(value, { stream: true });
+            processBuffer();
+            return read();
+          });
+        }
+
+        return read();
+      })
+      .catch(function (err) {
+        if (err instanceof ApiError) throw err;
+        if (err && err.name === "AbortError") {
+          throw new ApiError(
+            "The request was cancelled.",
+            "timeout"
+          );
+        }
+        throw new ApiError(
+          "Unable to reach the EduSaarthi service. Check your connection and try again.",
+          "network"
+        );
+      })
+      .finally(function () {
+        if (timeoutId) window.clearTimeout(timeoutId);
+      });
+  }
+
   window.EduApi = {
     ApiError: ApiError,
     configure: function (opts) {
@@ -367,6 +523,7 @@
     getBaseUrl: getBaseUrl,
     endpoint: endpoint,
     sendChat: sendChat,
+    sendChatStream: sendChatStream,
     normalise: normalise,
     safeUrl: safeUrl
   };

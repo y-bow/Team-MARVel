@@ -138,8 +138,38 @@ def test_config(schemes_json_file):
 
 @pytest.fixture
 def mock_provider():
-    """Return a mock provider whose generate() can be configured per test."""
+    """Return a mock provider whose generate() and generate_stream() can be configured per test."""
+    from unittest.mock import MagicMock
+    
     provider = MagicMock()
+    
+    # Default generate_stream that yields from generate's return_value or side_effect
+    def make_stream(*args, **kwargs):
+        side_effect = provider.generate.side_effect
+        return_value = provider.generate.return_value
+        
+        if side_effect is not None:
+            # If side_effect is an exception, raise it
+            if isinstance(side_effect, BaseException):
+                raise side_effect
+            # If side_effect is a list, iterate through it
+            if isinstance(side_effect, (list, tuple)):
+                for item in side_effect:
+                    if isinstance(item, BaseException):
+                        raise item
+                    yield item
+            else:
+                # Single callable or value
+                yield side_effect
+        elif return_value is not None:
+            # Single response
+            yield return_value
+        else:
+            # Default empty response
+            yield MagicMock(candidates=[])
+    
+    provider.generate_stream = MagicMock(side_effect=make_stream)
+    
     return provider
 
 
