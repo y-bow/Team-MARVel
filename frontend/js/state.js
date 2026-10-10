@@ -61,7 +61,8 @@
       request: { status: "idle", error: null, lastMessage: null },
       investigations: [],
       activeId: null,
-      savedPlans: []
+      savedPlans: [],
+      studentProfile: {}
     };
   }
 
@@ -94,6 +95,9 @@
     }
     if (typeof parsed.demoMode === "boolean") base.demoMode = parsed.demoMode;
     if (typeof parsed.activeId === "string") base.activeId = parsed.activeId;
+    if (parsed.studentProfile && typeof parsed.studentProfile === "object") {
+      base.studentProfile = parsed.studentProfile;
+    }
 
     // Ensure there is always a usable active investigation.
     var active = base.investigations.filter(function (i) {
@@ -112,6 +116,7 @@
       var slim = {
         demoMode: state.demoMode,
         activeId: state.activeId,
+        studentProfile: state.studentProfile || {},
         savedPlans: state.savedPlans,
         investigations: state.investigations.slice(0, MAX_INVESTIGATIONS).map(function (inv) {
           return {
@@ -201,6 +206,12 @@
     commit(function (s) {
       s.mobileView = view === "panel" ? "panel" : "chat";
     }, true);
+  }
+
+  function setStudentProfile(profile) {
+    commit(function (s) {
+      s.studentProfile = profile || {};
+    });
   }
 
   function newInvestigation(force) {
@@ -423,6 +434,7 @@
     setDemoMode: setDemoMode,
     setSidebarOpen: setSidebarOpen,
     setMobileView: setMobileView,
+    setStudentProfile: setStudentProfile,
     newInvestigation: newInvestigation,
     loadInvestigation: loadInvestigation,
     deleteInvestigation: deleteInvestigation,

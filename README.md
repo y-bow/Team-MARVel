@@ -3,7 +3,7 @@
 An AI-powered Student Opportunity Navigator for scholarships and education
 services, built for the DevFest on Campus 2026 hackathon.
 
-The backend (Flask + Gemini + tool-based agent) also serves the static
+The backend (Flask + OpenRouter + tool-based agent) also serves the static
 frontend, so a single command runs the whole app.
 
 ## Quick start (single-command run)
@@ -14,9 +14,9 @@ frontend, so a single command runs the whole app.
 # 1. Install dependencies (Python 3.10+)
 pip install -r requirements.txt
 
-# 2. Configure the Gemini API key (the server fails fast if it is missing)
+# 2. Configure the OpenRouter API key (the server fails fast if it is missing)
 cp .env.example .env
-# then edit .env and set GEMINI_API_KEY=<your key>
+# then edit .env and set OPENROUTER_API_KEY=<your key> and OPENROUTER_MODEL=<model id>
 
 # 3. Run the app — backend and frontend together
 python -m backend.app
@@ -38,23 +38,23 @@ gunicorn "backend.app:create_app()" --bind 0.0.0.0:$PORT --workers 2 --timeout 1
 
 ## Demo mode
 
-If the backend (or its Gemini key) is unavailable, toggle **Demo mode** in the
+If the backend (or its LLM API) is unavailable, toggle **Demo mode** in the
 sidebar. Demo responses come from `frontend/js/demo-data.js`, are deterministic,
 and are labelled "illustrative" throughout the UI.
 
 ## Running tests
 
-Offline tests use mocked Gemini responses — no API key or paid calls:
+Offline tests use mocked LLM responses — no API key or paid calls:
 
 ```bash
 pytest
 ```
 
-Integration tests against the live API are skipped unless `GEMINI_API_KEY` is
+Integration tests against the live API are skipped unless `OPENROUTER_API_KEY` is
 set:
 
 ```bash
-GEMINI_API_KEY=your_key pytest tests/test_integration.py -v
+OPENROUTER_API_KEY=your_key pytest tests/test_integration.py -v
 ```
 
 ## Project structure
@@ -70,9 +70,11 @@ tests/             Pytest suite and fixtures (offline by default)
 
 Environment variables (see `.env.example`):
 
-- `GEMINI_API_KEY` — required. Google Gemini API key from
-  https://aistudio.google.com/
-- `GEMINI_MODEL` — default `gemini-2.0-flash`
+- `OPENROUTER_API_KEY` — required. OpenRouter API key from
+  https://openrouter.ai/keys
+- `OPENROUTER_MODEL` — required. OpenRouter model id, must support tool
+  calling (e.g. `nvidia/nemotron-3-ultra-550b-a55b:free`)
+- `OPENROUTER_BASE_URL` — default `https://openrouter.ai/api/v1`
 - `DATA_PATH` — default `data/schemes.json`
 - `HOST` / `PORT` — default `0.0.0.0:5000`
 - `MAX_ITERATIONS`, `MAX_SEARCH_RESULTS`, `MAX_MESSAGE_LENGTH`,

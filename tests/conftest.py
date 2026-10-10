@@ -1,7 +1,7 @@
 """
 conftest.py — shared pytest fixtures for the EduSaarthi AI backend test suite.
 
-All fixtures use synthetic data and mocked Gemini responses.
+All fixtures use synthetic data and mocked LLM responses.
 No real API key or paid calls are made during offline tests.
 """
 
@@ -121,8 +121,8 @@ def repository(schemes_json_file):
 def test_config(schemes_json_file):
     """A Config instance with test-safe values (no real API key needed)."""
     return Config(
-        gemini_api_key="test-api-key-not-real",
-        gemini_model="gemini-2.0-flash",
+        openrouter_api_key="test-api-key-not-real",
+        openrouter_model="test/model-not-real",
         host="127.0.0.1",
         port=5001,
         debug=False,

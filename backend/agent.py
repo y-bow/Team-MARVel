@@ -1,9 +1,13 @@
 """
-agent.py — EduSaarthi AI Gemini function-calling agent.
+agent.py — EduSaarthi AI function-calling agent.
 
 Architecture:
-  - GeminiProvider: thin wrapper around the google-genai SDK.
-    Isolated so a different provider can replace it later.
+  - OpenRouterProvider: production provider speaking the OpenAI-compatible
+    Chat Completions API exposed by OpenRouter.
+  - GeminiProvider: alternative provider wrapping the google-genai SDK.
+    Both implement BaseProvider, so either can be wired in app.py.
+  - google-genai types are the loop's internal representation for contents,
+    tools and responses; providers translate at the wire boundary.
   - TOOL_REGISTRY: maps tool names → callables (bound to the repository).
   - TOOL_DECLARATIONS: SDK FunctionDeclaration objects (schema only, no logic).
   - AgentLoop: orchestrates the function-calling loop, conversation state,
@@ -22,6 +26,8 @@ Safety rails enforced here:
 from __future__ import annotations
 
 import json
+import urllib.error
+import urllib.request
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -230,7 +236,7 @@ class GeminiProvider(BaseProvider):
 
     def __init__(self, api_key: str) -> None:
         import google.genai as genai
-        self._client = genai.Client(api_key=api_key)
+        self._client = genai.Client(api_key=api_key, http_options={'timeout': 120_000})
 
     def generate(
         self,
@@ -239,6 +245,7 @@ class GeminiProvider(BaseProvider):
         tools: list[types.Tool],
         system_instruction: str,
     ) -> types.GenerateContentResponse:
+        import time
         config = types.GenerateContentConfig(
             system_instruction=system_instruction,
             tools=tools,
@@ -251,13 +258,19 @@ class GeminiProvider(BaseProvider):
                 disable=True,
             ),
             temperature=0.2,
+            # Add timeout? Not explicitly supported in config without http_options, wait...
         )
         try:
-            return self._client.models.generate_content(
+            start_time = time.perf_counter()
+            # Set http_options for timeout
+            res = self._client.models.generate_content(
                 model=model,
                 contents=contents,
                 config=config,
             )
+            end_time = time.perf_counter()
+            print(f"[TIMING] Gemini API generate_content duration: {end_time - start_time:.3f}s")
+            return res
         except ClientError as exc:
             code = exc.code if hasattr(exc, "code") else 400
             if code == 429:
@@ -282,6 +295,243 @@ class GeminiProvider(BaseProvider):
                 "An unexpected error occurred while contacting the AI model.",
                 http_status=503,
             ) from exc
+
+
+class OpenRouterProvider(BaseProvider):
+    """
+    Production provider — speaks the OpenAI-compatible Chat Completions API
+    exposed by OpenRouter ({base_url}/chat/completions).
+
+    Translates the loop's google-genai typed contents/tools to wire JSON and
+    the response back, so AgentLoop stays provider-agnostic.
+    """
+
+    _SCHEMA_TYPES = {
+        "OBJECT": "object",
+        "STRING": "string",
+        "ARRAY": "array",
+        "INTEGER": "integer",
+        "NUMBER": "number",
+        "BOOLEAN": "boolean",
+    }
+
+    _FINISH_REASONS = {
+        "stop": types.FinishReason.STOP,
+        "tool_calls": types.FinishReason.STOP,
+        "function_call": types.FinishReason.STOP,
+        "length": types.FinishReason.MAX_TOKENS,
+        "content_filter": types.FinishReason.PROHIBITED_CONTENT,
+    }
+
+    def __init__(self, api_key: str, base_url: str = "https://openrouter.ai/api/v1") -> None:
+        self._api_key = api_key
+        self._base_url = base_url.rstrip("/")
+
+    def generate(
+        self,
+        contents: list[types.Content],
+        model: str,
+        tools: list[types.Tool],
+        system_instruction: str,
+    ) -> types.GenerateContentResponse:
+        import time
+
+        messages = [{"role": "system", "content": system_instruction}]
+        messages.extend(self._contents_to_messages(contents))
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.2,
+        }
+        wire_tools = self._tools_to_openai(tools)
+        if wire_tools:
+            payload["tools"] = wire_tools
+
+        try:
+            start_time = time.perf_counter()
+            data = self._post(payload)
+            end_time = time.perf_counter()
+            print(f"[TIMING] OpenRouter generate duration: {end_time - start_time:.3f}s")
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(
+                "An unexpected error occurred while contacting the AI model.",
+                http_status=503,
+            ) from exc
+
+        choices = data.get("choices") or []
+        if not choices:
+            raise ProviderError(
+                "The AI model returned no response. Please try again.",
+                http_status=503,
+            )
+        choice = choices[0]
+        message = choice.get("message") or {}
+
+        parts: list[types.Part] = []
+        text = message.get("content")
+        if text:
+            parts.append(types.Part(text=text))
+        for tool_call in message.get("tool_calls") or []:
+            fn = tool_call.get("function") or {}
+            raw_args = fn.get("arguments") or "{}"
+            try:
+                args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+            except Exception:
+                args = {}
+            if not isinstance(args, dict):
+                args = {}
+            parts.append(
+                types.Part(
+                    function_call=types.FunctionCall(name=fn.get("name") or "", args=args)
+                )
+            )
+        if not parts:
+            parts = [types.Part(text="")]
+
+        finish_reason = self._FINISH_REASONS.get(
+            str(choice.get("finish_reason") or "stop").lower(),
+            types.FinishReason.STOP,
+        )
+        candidate = types.Candidate(
+            content=types.Content(role="model", parts=parts),
+            finish_reason=finish_reason,
+        )
+        return types.GenerateContentResponse(candidates=[candidate])
+
+    def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
+        request = urllib.request.Request(
+            f"{self._base_url}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self._api_key}",
+                "X-Title": "EduSaarthi AI",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                body = json.loads(exc.read().decode("utf-8"))
+                detail = (body.get("error") or {}).get("message", "")
+            except Exception:
+                pass
+            code = exc.code
+            if code == 429:
+                raise ProviderError(
+                    "API quota exceeded. Please try again later.", http_status=429
+                ) from exc
+            if code == 401:
+                raise ProviderError(
+                    "AI service authentication failed. Check OPENROUTER_API_KEY.",
+                    http_status=502,
+                ) from exc
+            if code >= 500:
+                raise ProviderError(
+                    "The AI model is temporarily unavailable. Please try again shortly.",
+                    http_status=503,
+                ) from exc
+            raise ProviderError(
+                f"API client error ({code}): {detail}", http_status=400
+            ) from exc
+        except (TimeoutError, urllib.error.URLError) as exc:
+            raise ProviderError(
+                "The AI model is temporarily unavailable. Please try again shortly.",
+                http_status=503,
+            ) from exc
+
+    @classmethod
+    def _tools_to_openai(cls, tools: list[types.Tool]) -> list[dict[str, Any]]:
+        declarations: list[dict[str, Any]] = []
+        for tool in tools:
+            for fn in (getattr(tool, "function_declarations", None) or []):
+                entry: dict[str, Any] = {
+                    "name": fn.name or "",
+                    "description": fn.description or "",
+                }
+                parameters = cls._schema_to_json(fn.parameters)
+                if parameters:
+                    entry["parameters"] = parameters
+                declarations.append({"type": "function", "function": entry})
+        return declarations
+
+    @classmethod
+    def _schema_to_json(cls, schema: Optional[types.Schema]) -> Optional[dict[str, Any]]:
+        if schema is None:
+            return None
+        out: dict[str, Any] = {}
+        raw_type = getattr(schema.type, "name", schema.type)
+        key = str(raw_type).upper().split(".")[-1]
+        out["type"] = cls._SCHEMA_TYPES.get(key, key.lower())
+        if schema.description:
+            out["description"] = schema.description
+        if schema.properties:
+            out["properties"] = {
+                name: cls._schema_to_json(prop) for name, prop in schema.properties.items()
+            }
+        if schema.items:
+            out["items"] = cls._schema_to_json(schema.items)
+        if schema.required:
+            out["required"] = list(schema.required)
+        return out
+
+    @staticmethod
+    def _contents_to_messages(contents: list[types.Content]) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
+        pending_call_ids: list[str] = []
+
+        for content in contents:
+            if content.role == "model":
+                text_parts: list[str] = []
+                tool_calls: list[dict[str, Any]] = []
+                for part in (content.parts or []):
+                    if part.text:
+                        text_parts.append(part.text)
+                    if part.function_call is not None:
+                        call_id = f"call_{len(messages)}_{len(tool_calls)}"
+                        tool_calls.append({
+                            "id": call_id,
+                            "type": "function",
+                            "function": {
+                                "name": part.function_call.name or "",
+                                "arguments": json.dumps(part.function_call.args or {}),
+                            },
+                        })
+                assistant: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": "\n".join(text_parts) or None,
+                }
+                if tool_calls:
+                    assistant["tool_calls"] = tool_calls
+                    pending_call_ids = [call["id"] for call in tool_calls]
+                messages.append(assistant)
+                continue
+
+            text_parts = []
+            for part in (content.parts or []):
+                if part.function_response is not None:
+                    payload = part.function_response.response
+                    call_id = (
+                        pending_call_ids.pop(0)
+                        if pending_call_ids
+                        else f"call_{len(messages)}_0"
+                    )
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "content": json.dumps(payload if payload is not None else {}, default=str),
+                    })
+                elif part.text:
+                    text_parts.append(part.text)
+            if text_parts:
+                messages.append({"role": "user", "content": "\n".join(text_parts)})
+
+        return messages
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +625,7 @@ class AgentLoop:
         self,
         message: str,
         conversation_id: Optional[str] = None,
+        student_profile: Optional[dict[str, Any]] = None,
     ) -> AgentResponse:
         """
         Process one user message, execute tool calls, and return a structured response.
@@ -405,13 +656,14 @@ class AgentLoop:
         final_text = ""
         iterations = 0
         max_iter = self._config.max_iterations
+        tool_cache = {}
 
         while iterations < max_iter:
             iterations += 1
 
             response = self._provider.generate(
                 contents=history,
-                model=self._config.gemini_model,
+                model=self._config.openrouter_model,
                 tools=[_GEMINI_TOOL],
                 system_instruction=SYSTEM_PROMPT,
             )
@@ -488,12 +740,24 @@ class AgentLoop:
                     })
                 else:
                     try:
-                        # Validate args are dict-like
-                        if not isinstance(raw_args, dict):
-                            raise ValueError(
-                                f"Tool arguments must be an object, got {type(raw_args).__name__}"
-                            )
-                        result = self._registry[tool_name](**raw_args)
+                        import json, time
+                        
+                        if tool_name == "check_eligibility" and student_profile:
+                            raw_args["student_info"] = {**student_profile, **raw_args.get("student_info", {})}
+                        
+                        # Generate cache key
+                        cache_key = f"{tool_name}:{json.dumps(raw_args, sort_keys=True)}"
+                        
+                        if cache_key in tool_cache:
+                            result = tool_cache[cache_key]
+                            print(f"[CACHE] Hit for {tool_name}")
+                        else:
+                            start_tool = time.perf_counter()
+                            result = self._registry[tool_name](**raw_args)
+                            end_tool = time.perf_counter()
+                            print(f"[TIMING] Tool {tool_name} duration: {end_tool - start_tool:.3f}s")
+                            tool_cache[cache_key] = result
+
                         is_error = isinstance(result, dict) and result.get("error") is True
                         events.append({
                             "tool": tool_name,
@@ -527,9 +791,9 @@ class AgentLoop:
                     )
                 )
 
-            # Append tool results as "tool" role turn
+            # Append tool results as "user" role turn (Gemini API requirement)
             history.append(
-                types.Content(role="tool", parts=tool_result_parts)
+                types.Content(role="user", parts=tool_result_parts)
             )
 
         else:

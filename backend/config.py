@@ -2,7 +2,7 @@
 config.py — EduSaarthi AI backend configuration.
 
 Reads all settings from environment variables (via python-dotenv).
-Missing GEMINI_API_KEY raises ConfigurationError at import time so
+Missing OPENROUTER_API_KEY raises ConfigurationError at import time so
 the server fails fast with a clear message — never serves fabricated answers.
 """
 
@@ -60,9 +60,9 @@ def _optional_int(name: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class Config:
-    # Gemini credentials
-    gemini_api_key: str
-    gemini_model: str
+    # OpenRouter credentials (OpenAI-compatible API)
+    openrouter_api_key: str
+    openrouter_model: str
 
     # Flask server
     host: str
@@ -82,6 +82,9 @@ class Config:
     # Path to the JSON knowledge base (read-only at runtime)
     data_path: str
 
+    # OpenRouter API base URL (OpenAI-compatible Chat Completions endpoint)
+    openrouter_base_url: str = field(default="https://openrouter.ai/api/v1")
+
     # Application version surfaced on /health
     version: str = field(default="1.0.0")
 
@@ -94,8 +97,11 @@ def load_config() -> Config:
     Never logs the API key.
     """
     return Config(
-        gemini_api_key=_require("GEMINI_API_KEY"),
-        gemini_model=_optional("GEMINI_MODEL", "gemini-2.0-flash"),
+        openrouter_api_key=_require("OPENROUTER_API_KEY"),
+        openrouter_model=_require("OPENROUTER_MODEL"),
+        openrouter_base_url=_optional(
+            "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+        ),
         host=_optional("HOST", "0.0.0.0"),
         port=_optional_int("PORT", 5000),
         debug=os.getenv("FLASK_DEBUG", "false").strip().lower() == "true",

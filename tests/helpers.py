@@ -1,5 +1,5 @@
 """
-helpers.py — test helper functions for building mock Gemini responses.
+helpers.py — test helper functions for building mock LLM responses.
 
 Separated from conftest.py to avoid pytest's conftest discovery
 conflicting with any installed 'tests' package in site-packages.

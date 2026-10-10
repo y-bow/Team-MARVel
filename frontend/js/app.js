@@ -110,8 +110,9 @@
     var active = State.getActive();
     var conversationId = active ? active.conversationId : null;
     var isDemo = State.get().demoMode;
+    var profile = State.get().studentProfile || {};
 
-    var promise = isDemo ? demoRequest(text) : Api.sendChat({ message: text, conversationId: conversationId });
+    var promise = isDemo ? demoRequest(text) : Api.sendChat({ message: text, conversationId: conversationId, studentProfile: profile });
     promise.then(handleResponse).catch(function (err) {
       handleFailure(err, text);
     });
@@ -382,6 +383,22 @@
         submitCurrentMessage();
       }
     });
+
+    var profileForm = document.getElementById("studentProfileForm");
+    if (profileForm) {
+      profileForm.addEventListener("submit", function(e) {
+        e.preventDefault();
+        var formData = new FormData(profileForm);
+        var profile = {};
+        formData.forEach(function(value, key) {
+          if (value.trim() !== "") {
+            profile[key] = value.trim();
+          }
+        });
+        State.setStudentProfile(profile);
+        toast("Profile saved!");
+      });
+    }
   }
 
   /* ------------------------------- boot ------------------------------- */
@@ -391,4 +408,14 @@
   } else {
     init();
   }
+
+  // Populate profile form on load
+  document.addEventListener("DOMContentLoaded", function() {
+    var form = document.getElementById("studentProfileForm");
+    if (!form) return;
+    var profile = State.get().studentProfile || {};
+    Object.keys(profile).forEach(function(key) {
+      if (form.elements[key]) form.elements[key].value = profile[key];
+    });
+  });
 })();

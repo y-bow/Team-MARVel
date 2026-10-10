@@ -47,8 +47,8 @@ class TestIterationLimit:
         # Use a config with very low max_iterations
         from backend.config import Config
         low_iter_config = Config(
-            gemini_api_key="test",
-            gemini_model="gemini-2.0-flash",
+            openrouter_api_key="test",
+            openrouter_model="test/model-not-real",
             host="127.0.0.1",
             port=5001,
             debug=False,

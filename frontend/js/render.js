@@ -85,6 +85,27 @@
     if (child) node.appendChild(child);
   }
 
+  function renderMarkdown(text, className) {
+    if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+      return h("div", { class: className, text: text });
+    }
+
+    var rawHtml = marked.parse(text || "", { breaks: true, gfm: true });
+    var cleanHtml = DOMPurify.sanitize(rawHtml);
+
+    var container = document.createElement("div");
+    container.className = "markdown-body " + (className || "");
+    container.innerHTML = cleanHtml;
+
+    var links = container.querySelectorAll("a");
+    for (var i = 0; i < links.length; i++) {
+      links[i].setAttribute("target", "_blank");
+      links[i].setAttribute("rel", "noopener noreferrer");
+    }
+
+    return container;
+  }
+
   /* ------------------------------- formatting ------------------------------- */
 
   function formatTime(ts) {
@@ -126,27 +147,27 @@
   var STARTERS = [
     {
       icon: "i-search",
-      title: "Find scholarships for my course",
-      desc: "Search the records that match your programme.",
-      prompt: "Find scholarships for my course."
+      title: "Find undergraduate scholarships",
+      desc: "Search the records that match your profile.",
+      prompt: "Find scholarships for a second-year undergraduate student."
     },
     {
       icon: "i-badge-check",
-      title: "Help me understand eligibility",
+      title: "Check missing eligibility details",
       desc: "See what you meet, and what is still missing.",
-      prompt: "Help me understand eligibility."
-    },
-    {
-      icon: "i-list-checks",
-      title: "Prepare my application document checklist",
-      desc: "Get an organised list of documents to gather.",
-      prompt: "Prepare my application document checklist."
+      prompt: "Which eligibility details are still missing?"
     },
     {
       icon: "i-compass",
-      title: "Guide me through a certificate application",
-      desc: "Follow a clear, step-by-step process.",
-      prompt: "Guide me through a certificate application."
+      title: "Compare scholarship requirements",
+      desc: "Compare scholarships and their application requirements.",
+      prompt: "Compare scholarships and their application requirements."
+    },
+    {
+      icon: "i-list-checks",
+      title: "Create an application checklist",
+      desc: "Get an organised list of documents to gather.",
+      prompt: "Create an application checklist for a matching scheme."
     }
   ];
 
@@ -200,7 +221,7 @@
     if (message.kind === "clarification") {
       bodyChildren.push(renderClarificationCard({ question: message.text, options: message.options || [] }));
     } else {
-      bodyChildren.push(h("p", { class: "msg__text", text: message.text }));
+      bodyChildren.push(renderMarkdown(message.text, "msg__text"));
     }
     bodyChildren.push(
       h("div", { class: "msg__meta" }, [
@@ -544,7 +565,7 @@
       nodes.push(
         h("div", { class: "summary-card" }, [
           h("p", { class: "summary-card__label" }, [svgIcon("sparkles"), "Summary"]),
-          h("p", { class: "summary-card__text", text: result.answer })
+          renderMarkdown(result.answer, "summary-card__text")
         ])
       );
     }

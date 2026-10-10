@@ -30,7 +30,7 @@ POST /api/chat
   app.py  ──  request validation  ──►  400 on bad input
       │
       ▼
-  agent.py  ──  GeminiProvider  ──►  google-genai SDK  ──►  Gemini API
+  agent.py  ──  OpenRouterProvider  ──►  OpenAI-compatible API  ──►  OpenRouter
       │              │
       │        function-calling loop
       │              │
@@ -42,11 +42,11 @@ POST /api/chat
 
 | Module | Responsibility |
 |---|---|
-| `config.py` | Load all env vars; fail fast with ConfigurationError if GEMINI_API_KEY is missing |
+| `config.py` | Load all env vars; fail fast with ConfigurationError if OPENROUTER_API_KEY is missing |
 | `schemas.py` | `SchemeRecord` dataclass + `scheme_from_dict` factory |
 | `repository.py` | `BaseRepository` interface + `JSONRepository` implementation |
 | `tools.py` | 5 tool functions (search, eligibility, requirements, deadline, action plan) |
-| `agent.py` | `GeminiProvider`, `AgentLoop`, tool registry, conversation state |
+| `agent.py` | `OpenRouterProvider`, `AgentLoop`, tool registry, conversation state |
 | `app.py` | Flask app factory, `/health`, `/api/chat` |
 
 ---
@@ -80,10 +80,10 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env and set GEMINI_API_KEY to your real key.
+# Edit .env and set OPENROUTER_API_KEY to your real key and OPENROUTER_MODEL.
 ```
 
-The server **refuses to start** if `GEMINI_API_KEY` is missing, so this step is required.
+The server **refuses to start** if `OPENROUTER_API_KEY` is missing, so this step is required.
 
 ### 5. Run Flask locally (development)
 
@@ -106,11 +106,11 @@ pytest
 # Or with more output
 pytest -v
 
-# Integration tests (requires a real GEMINI_API_KEY and uses paid quota)
-GEMINI_API_KEY=your_key pytest tests/test_integration.py -v
+# Integration tests (requires a real OPENROUTER_API_KEY and uses paid quota)
+OPENROUTER_API_KEY=your_key pytest tests/test_integration.py -v
 ```
 
-Tests use synthetic JSON data and mocked Gemini responses. They run fully offline.
+Tests use synthetic JSON data and mocked LLM responses. They run fully offline.
 
 ---
 
@@ -142,7 +142,7 @@ gunicorn "backend.app:create_app()" \
 {
   "status": "ok",
   "version": "1.0.0",
-  "model": "gemini-2.0-flash",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
   "data_loaded": true,
   "scheme_count": 42
 }
@@ -218,8 +218,8 @@ data (they are never fabricated):
 | 400 | `MESSAGE_TOO_LONG` | `message` exceeds 4000 chars |
 | 400 | `INVALID_CONTENT_TYPE` | Not `application/json` |
 | 400 | `INVALID_JSON` | Malformed JSON body |
-| 429 | `PROVIDER_ERROR` | Gemini API quota exceeded |
-| 503 | `PROVIDER_ERROR` | Gemini API unavailable |
+| 429 | `PROVIDER_ERROR` | LLM API quota exceeded |
+| 503 | `PROVIDER_ERROR` | LLM API unavailable |
 | 500 | `AGENT_ERROR` | Unexpected internal error |
 | 500 | `INTERNAL_ERROR` | Unhandled Flask exception |
 
@@ -285,7 +285,7 @@ It resets when the server restarts. Suitable for the hackathon; note this if dep
 
 ## Safety rules (enforced in code)
 
-- Missing `GEMINI_API_KEY` → `ConfigurationError` at startup, server does not start.
+- Missing `OPENROUTER_API_KEY` → `ConfigurationError` at startup, server does not start.
 - Max iterations: 8 (configurable via `MAX_ITERATIONS`). Prevents infinite loops.
 - Max search results: 10 (configurable via `MAX_SEARCH_RESULTS`).
 - Message length capped at 4000 chars; answer capped at 8000 chars.

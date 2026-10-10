@@ -1,33 +1,36 @@
 """
-test_integration.py — optional integration tests against the live Gemini API.
+test_integration.py — optional integration tests against the live OpenRouter API.
 
-These tests are SKIPPED unless GEMINI_API_KEY is set in the environment.
+These tests are SKIPPED unless OPENROUTER_API_KEY is set in the environment.
 They make real API calls and should NOT be run in CI without a budget guard.
 
 Run manually:
-    GEMINI_API_KEY=your_key pytest tests/test_integration.py -v
+    OPENROUTER_API_KEY=your_key pytest tests/test_integration.py -v
 """
 
 import os
 import pytest
 
-SKIP_REASON = "GEMINI_API_KEY not set — skipping integration tests"
+SKIP_REASON = "OPENROUTER_API_KEY not set — skipping integration tests"
 pytestmark = pytest.mark.skipif(
-    not os.getenv("GEMINI_API_KEY"), reason=SKIP_REASON
+    not os.getenv("OPENROUTER_API_KEY"), reason=SKIP_REASON
 )
 
 
 @pytest.fixture(scope="module")
 def live_client():
-    """Flask test client with real Gemini provider and real data."""
+    """Flask test client with real OpenRouter provider and real data."""
     from backend.config import load_config
     from backend.repository import JSONRepository
-    from backend.agent import GeminiProvider, AgentLoop, build_tool_registry
+    from backend.agent import OpenRouterProvider, AgentLoop, build_tool_registry
     from backend.app import create_app
 
     cfg = load_config()
     repo = JSONRepository(cfg.data_path)
-    provider = GeminiProvider(api_key=cfg.gemini_api_key)
+    provider = OpenRouterProvider(
+        api_key=cfg.openrouter_api_key,
+        base_url=cfg.openrouter_base_url,
+    )
     registry = build_tool_registry(repo, cfg)
     agent = AgentLoop(provider=provider, tool_registry=registry, config=cfg)
     app = create_app(config=cfg, repository=repo, provider=provider)

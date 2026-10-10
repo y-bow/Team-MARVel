@@ -24,7 +24,7 @@
 
   var DEFAULT_BASE = ""; // same-origin by default
   var baseUrl = DEFAULT_BASE;
-  var REQUEST_TIMEOUT_MS = 45000;
+  var REQUEST_TIMEOUT_MS = 120000;
 
   var EVENT_STATUSES = ["queued", "running", "completed", "failed"];
   var RESPONSE_STATUSES = ["completed", "clarification", "no_results", "failed"];
@@ -286,7 +286,8 @@
 
     var payload = {
       message: message,
-      conversation_id: options.conversationId || null
+      conversation_id: options.conversationId || null,
+      student_profile: options.studentProfile || null
     };
 
     return fetch(endpoint(), {

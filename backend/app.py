@@ -19,6 +19,7 @@ Design rules:
 from __future__ import annotations
 
 import os
+import uuid
 import sys
 import traceback
 from pathlib import Path
@@ -33,7 +34,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from backend.config import load_config, ConfigurationError
 from backend.repository import JSONRepository
-from backend.agent import AgentLoop, GeminiProvider, ProviderError, build_tool_registry
+from backend.agent import AgentLoop, OpenRouterProvider, ProviderError, build_tool_registry
 
 # Absolute path to the frontend directory (served as static files).
 FRONTEND_DIR = os.path.join(
@@ -102,7 +103,10 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
     # ------------------------------------------------------------------
     # Initialise provider and agent loop
     # ------------------------------------------------------------------
-    prov = provider or GeminiProvider(api_key=cfg.gemini_api_key)
+    prov = provider or OpenRouterProvider(
+        api_key=cfg.openrouter_api_key,
+        base_url=cfg.openrouter_base_url,
+    )
     registry = build_tool_registry(repo, cfg)
     agent = AgentLoop(provider=prov, tool_registry=registry, config=cfg)
 
@@ -156,7 +160,7 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
         return jsonify({
             "status": "ok",
             "version": cfg_.version,
-            "model": cfg_.gemini_model,
+            "model": cfg_.openrouter_model,
             "data_loaded": True,
             "scheme_count": repo_.count(),
         }), 200
@@ -233,14 +237,31 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
         if isinstance(conversation_id, str):
             conversation_id = conversation_id.strip() or None
 
+        # -- Validate student_profile --
+        student_profile = body.get("student_profile", {})
+        if not isinstance(student_profile, dict):
+            student_profile = {}
+
         # -- Run agent --
         try:
-            result = agent_.run(message=message, conversation_id=conversation_id)
+            import time
+            start_time = time.perf_counter()
+            result = agent_.run(message=message, conversation_id=conversation_id, student_profile=student_profile)
+            end_time = time.perf_counter()
+            app.logger.info(f"[TIMING] Total /api/chat duration: {end_time - start_time:.3f}s")
         except ProviderError as exc:
-            return jsonify({
-                "error": str(exc),
-                "code": "PROVIDER_ERROR",
-            }), exc.http_status
+            app.logger.warning("ProviderError: %s", exc)
+            # Fallback demo response when the Gemini model is unavailable
+            demo_payload = {
+                "conversation_id": str(uuid.uuid4()),
+                "status": "completed",
+                "answer": "Sorry, the AI service is currently unavailable. This is a demo response.",
+                "sources": [],
+                "events": [],
+                "action_plan": [],
+                "demo": True,
+            }
+            return jsonify(demo_payload), 200
         except Exception:
             app.logger.error("Agent error: %s", traceback.format_exc())
             return jsonify({

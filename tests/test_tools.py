@@ -2,7 +2,7 @@
 test_tools.py — unit tests for all 5 tool functions.
 
 All tests use synthetic data via the repository fixture.
-No real API key or Gemini calls.
+No real API key or LLM calls.
 """
 
 import pytest

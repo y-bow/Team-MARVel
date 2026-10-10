@@ -103,6 +103,19 @@
       </div>
 
       <div class="sidebar__bottom">
+        <div class="sidebar__profile" style="padding: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px;">
+          <h3 style="font-size: 0.875rem; margin-bottom: 8px;">Student Profile</h3>
+          <form id="studentProfileForm" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.875rem;">
+            <input type="text" name="education_level" placeholder="Course/Branch (e.g. UG, 10th)" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
+            <input type="text" name="year_of_study" placeholder="Current year of study" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
+            <input type="text" name="state" placeholder="State/domicile" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
+            <input type="number" name="annual_family_income" placeholder="Annual family income" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
+            <input type="number" name="percentage" placeholder="Previous marks (%)" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
+            <input type="text" name="caste_category" placeholder="Category (e.g. SC, ST, General)" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
+            <button type="submit" class="btn btn--accent" style="padding: 6px;">Save Profile</button>
+          </form>
+        </div>
+
         <div class="demo-toggle" role="group" aria-label="Demo mode">
           <div class="demo-toggle__text">
             <span class="demo-toggle__title">Demo mode</span>
@@ -202,7 +215,7 @@
                 name="message"
                 class="composer__input"
                 rows="1"
-                placeholder="Describe your course, goals or the opportunity you need…"
+                placeholder="e.g. Find scholarships for a second-year undergraduate student…"
                 aria-describedby="composerHint"
               ></textarea>
               <button
@@ -256,6 +269,10 @@
   </div>
 
   <div class="toast-region" id="toastRegion" aria-live="assertive" aria-atomic="false"></div>
+
+  <!-- Markdown rendering and sanitisation libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
 
   <script src="js/demo-data.js"></script>
   <script src="js/state.js"></script>
