@@ -1,7 +1,7 @@
 # EduSaarthi AI
 
 An AI-powered Student Opportunity Navigator for scholarships and education
-services — built for the DevFest on Campus 2026 hackathon.
+services, built for the DevFest on Campus 2026 hackathon.
 
 The backend (Flask + Gemini + tool-based agent) also serves the static
 frontend, so a single command runs the whole app.
@@ -14,23 +14,23 @@ frontend, so a single command runs the whole app.
 # 1. Install dependencies (Python 3.10+)
 pip install -r requirements.txt
 
-# 2. Configure the Gemini API key (server fails fast if missing)
+# 2. Configure the Gemini API key (the server fails fast if it is missing)
 cp .env.example .env
 # then edit .env and set GEMINI_API_KEY=<your key>
 
-# 3. Run the app — backend + frontend together
+# 3. Run the app — backend and frontend together
 python -m backend.app
 ```
 
 This serves everything on one origin:
 
-| URL | What it is |
+| URL | Description |
 |---|---|
 | `http://localhost:5000/` | Frontend UI (`frontend/index.html`) |
 | `GET /health` | Health check (status, model, scheme count) |
 | `POST /api/chat` | Chat / investigation endpoint |
 
-`python backend/app.py` works too. For production use Gunicorn:
+`python backend/app.py` works too. For production, use Gunicorn:
 
 ```bash
 gunicorn "backend.app:create_app()" --bind 0.0.0.0:$PORT --workers 2 --timeout 120
@@ -39,7 +39,7 @@ gunicorn "backend.app:create_app()" --bind 0.0.0.0:$PORT --workers 2 --timeout 1
 ## Demo mode
 
 If the backend (or its Gemini key) is unavailable, toggle **Demo mode** in the
-sidebar. Demo responses come from `frontend/js/demo-data.js`, are deterministic
+sidebar. Demo responses come from `frontend/js/demo-data.js`, are deterministic,
 and are labelled "illustrative" throughout the UI.
 
 ## Running tests
@@ -60,10 +60,10 @@ GEMINI_API_KEY=your_key pytest tests/test_integration.py -v
 ## Project structure
 
 ```
-frontend/        Static UI (HTML/CSS/JS, no build step) — see frontend/README.md
-backend/         Flask API, LLM agent, tools — see backend/README.md
+frontend/          Static UI (HTML/CSS/JS, no build step) — see frontend/README.md
+backend/           Flask API, LLM agent, tools — see backend/README.md
 data/schemes.json  Verified scheme knowledge base
-tests/           Pytest suite and fixtures (offline by default)
+tests/             Pytest suite and fixtures (offline by default)
 ```
 
 ## Configuration
@@ -87,15 +87,16 @@ server and use Demo mode:
 python3 -m http.server 8000     # from inside frontend/
 ```
 
-pointing your browser at http://localhost:8000. The frontend calls a relative
-`/api/chat` by default; set `window.EDUSAARTHI_API_BASE` to the backend URL
-when hosting them separately.
+Then open http://localhost:8000. The frontend calls a relative `/api/chat` by
+default; set `window.EDUSAARTHI_API_BASE` to the backend URL when hosting the
+two separately.
 
-## Safety / honesty rules
+## Safety and honesty rules
 
 - Answers are grounded in tool results; criteria, deadlines and documents are
   never invented.
-- Eligibility is deterministic and gaps/missing info are reported honestly.
+- Eligibility is deterministic, and gaps or missing information are reported
+  honestly.
 - API keys and secrets stay on the server and are never exposed to the client.
-- Source URLs must be absolute `http(s)` links; unverified/unchecked deadlines
-  are always flagged.
+- Source URLs must be absolute `http(s)` links; unverified or unchecked
+  deadlines are always flagged.
