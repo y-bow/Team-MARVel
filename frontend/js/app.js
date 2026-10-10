@@ -20,8 +20,6 @@
   /* ------------------------------- init ------------------------------- */
 
   function init() {
-    // Optional base URL override for separately-hosted frontend/backend:
-    // window.EDUSAARTHI_API_BASE = "https://backend.example.com";
     if (typeof window.EDUSAARTHI_API_BASE === "string" && window.EDUSAARTHI_API_BASE) {
       Api.setBaseUrl(window.EDUSAARTHI_API_BASE);
     }
@@ -29,12 +27,12 @@
     State.init();
     refs = Render.init();
 
-    // Kept on every state change.
     State.subscribe(renderTick);
-
     wireEvents();
     renderTick(State.get());
-    focusComposer();
+
+    // Restore profile form values from state
+    populateProfileForm();
   }
 
   function renderTick(state) {
@@ -73,7 +71,7 @@
   function updateComposer(state) {
     var loading = state.request.status === "loading";
     refs.composer.classList.toggle("is-loading", loading);
-    refs.composerStatus.textContent = loading ? "Investigating…" : "";
+    refs.composerStatus.textContent = loading ? "Thinking\u2026" : "";
     updateSendState();
   }
 
@@ -84,13 +82,19 @@
     var text = opts.text !== undefined ? String(opts.text).trim() : refs.composerInput.value.trim();
     if (!text || State.get().request.status === "loading") return;
 
-    if (!opts.continueCurrent) {
-      State.newInvestigation();
-    }
+    // Ensure there is an active conversation
     var active = State.getActive();
-    if (active.messages.length === 0 && active.title === "New investigation") {
+    if (!active || (!opts.continueCurrent && active.messages.length > 0 && active.title)) {
+      State.newConversation(true);
+    } else if (!active) {
+      State.newConversation(true);
+    }
+
+    active = State.getActive();
+    if (active.messages.length === 0 && !active.title) {
       State.renameActiveFromMessage(text);
     }
+
     State.appendMessage({
       id: State.uid("m"),
       role: "user",
@@ -139,7 +143,7 @@
     if (response.status === "failed") {
       State.setRequest({
         status: "error",
-        error: { message: "The investigation could not be completed. Review the failed activity in the Investigation panel, then retry with the same or adjusted details.", code: "failed" },
+        error: { message: "The request could not be completed. Please try again.", code: "failed" },
         lastMessage: text
       });
     } else if (response.status === "clarification" && response.clarification) {
@@ -154,7 +158,7 @@
     } else {
       var fallback = response.status === "no_results"
         ? "No relevant records were found in the available dataset for this request."
-        : "Here is what the investigation found. Full details, sources and next steps are in the Investigation panel.";
+        : "Here is what I found.";
       State.appendMessage({
         id: State.uid("m"),
         role: "assistant",
@@ -188,7 +192,14 @@
 
   function scrollConversation() {
     window.requestAnimationFrame(function () {
-      refs.conversation.scrollTop = refs.conversation.scrollHeight;
+      var el = refs.conversation;
+      if (!el) return;
+      // Auto-scroll only if user is near the bottom
+      var threshold = 150;
+      var atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+      if (atBottom || State.get().request.status === "loading") {
+        el.scrollTop = el.scrollHeight;
+      }
     });
   }
 
@@ -203,6 +214,45 @@
     window.setTimeout(function () {
       el.remove();
     }, 3800);
+  }
+
+  /* ------------------------------- profile ------------------------------- */
+
+  function openProfileDialog() {
+    if (refs.profileDialog && typeof refs.profileDialog.showModal === "function") {
+      populateProfileForm();
+      refs.profileDialog.showModal();
+    }
+  }
+
+  function closeProfileDialog() {
+    if (refs.profileDialog) {
+      refs.profileDialog.close();
+    }
+  }
+
+  function populateProfileForm() {
+    var form = document.getElementById("studentProfileForm");
+    if (!form) return;
+    var profile = State.get().studentProfile || {};
+    Object.keys(profile).forEach(function (key) {
+      if (form.elements[key]) form.elements[key].value = profile[key];
+    });
+  }
+
+  function handleProfileSave(e) {
+    e.preventDefault();
+    var form = e.target;
+    var formData = new FormData(form);
+    var profile = {};
+    formData.forEach(function (value, key) {
+      if (value.trim() !== "") {
+        profile[key] = value.trim();
+      }
+    });
+    State.setStudentProfile(profile);
+    closeProfileDialog();
+    toast("Profile saved!");
   }
 
   /* ------------------------------- actions ------------------------------- */
@@ -229,24 +279,20 @@
       case "save-plan":
         handleSavePlan();
         break;
-      case "event-toggle":
-        toggleEventDetails(el);
+      case "toggle-activity":
+        toggleActivity(el);
         break;
-      case "open-investigation":
-        State.loadInvestigation(el.getAttribute("data-id"));
-        closeSidebar();
-        setMobileView("chat");
-        focusComposer();
+      case "open-conversation":
+        handleOpenConversation(el.getAttribute("data-id"));
         break;
-      case "delete-investigation":
-        handleDeleteInvestigation(el.getAttribute("data-id"));
+      case "delete-conversation":
+        handleDeleteConversation(el.getAttribute("data-id"));
         break;
-      case "delete-plan":
-        State.deleteSavedPlan(el.getAttribute("data-plan-id"));
-        toast("Plan deleted");
+      case "rename-conversation":
+        handleRenameConversation(el.getAttribute("data-id"));
         break;
-      case "source-link":
-        /* Anchors are only rendered with validated http(s) URLs. */
+      case "close-profile":
+        closeProfileDialog();
         break;
       default:
         break;
@@ -264,111 +310,140 @@
   function handleSavePlan() {
     var id = State.savePlanFromActive();
     if (id) {
-      toast("Plan saved to Saved plans");
+      toast("Plan saved!");
     } else {
-      toast("Nothing to save — no next steps were generated.", "warn");
+      toast("Nothing to save.", "warn");
     }
   }
 
-  function toggleEventDetails(button) {
-    var id = button.getAttribute("aria-controls");
-    var pre = document.getElementById(id);
-    if (!pre) return;
-    var open = pre.hidden;
-    pre.hidden = !open;
+  function toggleActivity(button) {
+    var parent = button.closest(".activity");
+    if (!parent) return;
+    var body = parent.querySelector(".activity__body");
+    if (!body) return;
+    var open = body.hidden;
+    body.hidden = !open;
     button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.classList.toggle("activity__toggle--open", open);
   }
 
-  function handleDeleteInvestigation(id) {
-    State.deleteInvestigation(id);
-    toast("Investigation deleted");
+  function handleOpenConversation(id) {
+    State.loadConversation(id);
+    closeSidebar();
+    focusComposer();
+  }
+
+  function handleDeleteConversation(id) {
+    if (!confirm("Delete this conversation?")) return;
+    State.deleteConversation(id);
+    toast("Conversation deleted");
+    // If no active conversation, don't auto-create one — show welcome screen
+  }
+
+  function handleRenameConversation(id) {
+    var conv = State.get().investigations.filter(function (i) { return i.id === id; })[0];
+    if (!conv) return;
+    var current = conv.title || "";
+    var newTitle = prompt("Rename conversation:", current);
+    if (newTitle !== null && newTitle.trim() !== current.trim()) {
+      State.renameConversation(id, newTitle.trim());
+      toast("Conversation renamed");
+    }
   }
 
   function closeSidebar() {
     if (State.get().sidebarOpen) State.setSidebarOpen(false);
   }
 
-  function setMobileView(view) {
-    State.setMobileView(view);
-  }
-
   /* ------------------------------- event wiring ------------------------------- */
 
   function wireEvents() {
+    // Delegated click handler for data-action elements
     document.addEventListener("click", function (e) {
       var el = e.target.closest("[data-action]");
       if (!el) return;
       handleAction(el);
     });
 
+    // Keyboard: Enter/Space on actionable items, Escape to close sidebar
     document.addEventListener("keydown", function (e) {
       var el = e.target;
-      if (el && el.getAttribute && el.getAttribute("data-action") === "open-investigation") {
+      if (el && el.getAttribute && el.getAttribute("data-action")) {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           handleAction(el);
         }
       }
-      if (e.key === "Escape" && State.get().sidebarOpen) {
-        closeSidebar();
+      if (e.key === "Escape") {
+        if (State.get().sidebarOpen) {
+          closeSidebar();
+        }
       }
     });
 
+    // Change handler for checkboxes
     document.addEventListener("change", function (e) {
       var input = e.target;
       if (!input || !input.dataset) return;
       if (input.dataset.action === "checklist-toggle") {
         State.updateChecklist(Number(input.dataset.index), input.checked);
-      } else if (input.dataset.action === "saved-toggle") {
-        State.toggleSavedItem(input.dataset.planId, Number(input.dataset.index));
       }
     });
 
-    // Nav
-    refs.navItems.forEach(function (item) {
-      item.addEventListener("click", function () {
-        State.setView(item.getAttribute("data-view"));
-        closeSidebar();
-      });
-    });
-
-    // Top-level controls
+    // Sidebar toggle (mobile hamburger)
     refs.menuBtn.addEventListener("click", function () {
       State.setSidebarOpen(!State.get().sidebarOpen);
     });
+
+    // Sidebar collapse (desktop)
+    if (refs.sidebarCollapseBtn) {
+      refs.sidebarCollapseBtn.addEventListener("click", function () {
+        State.setSidebarCollapsed(true);
+      });
+    }
+    if (refs.sidebarExpandBtn) {
+      refs.sidebarExpandBtn.addEventListener("click", function () {
+        State.setSidebarCollapsed(false);
+      });
+    }
+
+    // Scrim click closes sidebar on mobile
     refs.scrim.addEventListener("click", closeSidebar);
-    refs.panelBack.addEventListener("click", function () {
-      setMobileView("chat");
-    });
 
-    refs.tabChat.addEventListener("click", function () {
-      setMobileView("chat");
-    });
-    refs.tabPanel.addEventListener("click", function () {
-      setMobileView("panel");
-    });
-
+    // Demo toggle
     refs.demoToggle.addEventListener("click", function () {
       var on = !(State.get().demoMode);
       State.setDemoMode(on);
-      toast(on ? "Demo mode enabled — data shown is illustrative." : "Demo mode disabled.", "warn");
+      toast(on ? "Demo mode enabled." : "Demo mode disabled.", "warn");
     });
 
-    refs.newInvestigationBtn.addEventListener("click", function () {
-      State.newInvestigation(true);
+    // New chat button
+    refs.newChatBtn.addEventListener("click", function () {
+      State.newConversation(true);
       closeSidebar();
-      setMobileView("chat");
       focusComposer();
     });
+
+    // Brand link = new chat
     refs.brandLink.addEventListener("click", function (e) {
       e.preventDefault();
-      State.newInvestigation(true);
+      State.newConversation(true);
       closeSidebar();
-      setMobileView("chat");
       focusComposer();
     });
 
-    // Composer
+    // Profile button
+    refs.profileBtn.addEventListener("click", function () {
+      openProfileDialog();
+    });
+
+    // Profile form submit
+    var profileForm = document.getElementById("studentProfileForm");
+    if (profileForm) {
+      profileForm.addEventListener("submit", handleProfileSave);
+    }
+
+    // Composer submit
     refs.composer.addEventListener("submit", function (e) {
       e.preventDefault();
       submitCurrentMessage();
@@ -383,22 +458,6 @@
         submitCurrentMessage();
       }
     });
-
-    var profileForm = document.getElementById("studentProfileForm");
-    if (profileForm) {
-      profileForm.addEventListener("submit", function(e) {
-        e.preventDefault();
-        var formData = new FormData(profileForm);
-        var profile = {};
-        formData.forEach(function(value, key) {
-          if (value.trim() !== "") {
-            profile[key] = value.trim();
-          }
-        });
-        State.setStudentProfile(profile);
-        toast("Profile saved!");
-      });
-    }
   }
 
   /* ------------------------------- boot ------------------------------- */
@@ -408,14 +467,4 @@
   } else {
     init();
   }
-
-  // Populate profile form on load
-  document.addEventListener("DOMContentLoaded", function() {
-    var form = document.getElementById("studentProfileForm");
-    if (!form) return;
-    var profile = State.get().studentProfile || {};
-    Object.keys(profile).forEach(function(key) {
-      if (form.elements[key]) form.elements[key].value = profile[key];
-    });
-  });
 })();

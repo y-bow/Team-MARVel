@@ -24,6 +24,7 @@ from typing import Any, Optional
 
 from backend.repository import BaseRepository
 from backend.schemas import SchemeRecord
+from backend.eligibility import ELIGIBILITY_DISCLAIMER, evaluate_scheme
 
 # ---------------------------------------------------------------------------
 # Eligibility status constants
@@ -39,13 +40,6 @@ DEADLINE_PAST = "past"
 DEADLINE_UNKNOWN = "unknown"
 DEADLINE_STALE = "stale"
 DEADLINE_UNVERIFIED = "unverified"
-
-# Eligibility disclaimer — always included
-ELIGIBILITY_DISCLAIMER = (
-    "This is guidance only, not official approval. Eligibility is determined "
-    "solely by the scheme's administering authority. Please verify all criteria "
-    "on the official portal before applying."
-)
 
 # Action plan disclaimer
 ACTION_PLAN_DISCLAIMER = (
@@ -207,193 +201,15 @@ def check_eligibility(
     if scheme is None:
         return _not_found(scheme_id)
 
-    c = scheme.criteria
-    satisfied: list[dict[str, str]] = []
-    unsatisfied: list[dict[str, str]] = []
-    unknown: list[dict[str, str]] = []
-
-    # --- education_level ---
-    if c.education_levels and "any" not in [lv.lower() for lv in c.education_levels]:
-        student_edu = student_info.get("education_level")
-        if student_edu is None:
-            unknown.append({
-                "criterion": "education_level",
-                "required": f"One of: {c.education_levels}",
-                "provided": None,
-                "note": "Not provided by student",
-            })
-        elif student_edu.lower().strip() in [lv.lower() for lv in c.education_levels]:
-            satisfied.append({
-                "criterion": "education_level",
-                "required": f"One of: {c.education_levels}",
-                "provided": student_edu,
-            })
-        else:
-            unsatisfied.append({
-                "criterion": "education_level",
-                "required": f"One of: {c.education_levels}",
-                "provided": student_edu,
-                "note": "Education level does not match scheme requirement",
-            })
-
-    # --- state ---
-    if c.state:
-        student_state = student_info.get("state")
-        if student_state is None:
-            unknown.append({
-                "criterion": "state",
-                "required": c.state,
-                "provided": None,
-                "note": "Not provided by student",
-            })
-        elif student_state.lower().strip() == c.state.lower().strip():
-            satisfied.append({
-                "criterion": "state",
-                "required": c.state,
-                "provided": student_state,
-            })
-        else:
-            unsatisfied.append({
-                "criterion": "state",
-                "required": c.state,
-                "provided": student_state,
-                "note": "State does not match; this is a state-specific scheme",
-            })
-
-    # --- caste_category ---
-    if c.caste_categories and "any" not in [cc.lower() for cc in c.caste_categories]:
-        student_caste = student_info.get("caste_category")
-        if student_caste is None:
-            unknown.append({
-                "criterion": "caste_category",
-                "required": f"One of: {c.caste_categories}",
-                "provided": None,
-                "note": "Not provided by student",
-            })
-        elif student_caste.upper().strip() in [cc.upper() for cc in c.caste_categories]:
-            satisfied.append({
-                "criterion": "caste_category",
-                "required": f"One of: {c.caste_categories}",
-                "provided": student_caste,
-            })
-        else:
-            unsatisfied.append({
-                "criterion": "caste_category",
-                "required": f"One of: {c.caste_categories}",
-                "provided": student_caste,
-                "note": "Caste category does not meet scheme requirement",
-            })
-
-    # --- min_percentage ---
-    if c.min_percentage is not None:
-        student_pct = student_info.get("percentage")
-        if student_pct is None:
-            unknown.append({
-                "criterion": "percentage",
-                "required": f">= {c.min_percentage}%",
-                "provided": None,
-                "note": "Not provided by student",
-            })
-        else:
-            try:
-                pct_val = float(student_pct)
-            except (TypeError, ValueError):
-                unknown.append({
-                    "criterion": "percentage",
-                    "required": f">= {c.min_percentage}%",
-                    "provided": student_pct,
-                    "note": "Could not parse provided percentage",
-                })
-            else:
-                if pct_val >= c.min_percentage:
-                    satisfied.append({
-                        "criterion": "percentage",
-                        "required": f">= {c.min_percentage}%",
-                        "provided": f"{pct_val}%",
-                    })
-                else:
-                    unsatisfied.append({
-                        "criterion": "percentage",
-                        "required": f">= {c.min_percentage}%",
-                        "provided": f"{pct_val}%",
-                        "note": "Academic percentage is below the minimum required",
-                    })
-
-    # --- annual_family_income ---
-    if c.annual_family_income_max is not None:
-        student_income = student_info.get("annual_family_income")
-        if student_income is None:
-            unknown.append({
-                "criterion": "annual_family_income",
-                "required": f"<= ₹{c.annual_family_income_max:,.0f}",
-                "provided": None,
-                "note": "Not provided by student",
-            })
-        else:
-            try:
-                income_val = float(student_income)
-            except (TypeError, ValueError):
-                unknown.append({
-                    "criterion": "annual_family_income",
-                    "required": f"<= ₹{c.annual_family_income_max:,.0f}",
-                    "provided": student_income,
-                    "note": "Could not parse provided income",
-                })
-            else:
-                if income_val <= c.annual_family_income_max:
-                    satisfied.append({
-                        "criterion": "annual_family_income",
-                        "required": f"<= ₹{c.annual_family_income_max:,.0f}",
-                        "provided": f"₹{income_val:,.0f}",
-                    })
-                else:
-                    unsatisfied.append({
-                        "criterion": "annual_family_income",
-                        "required": f"<= ₹{c.annual_family_income_max:,.0f}",
-                        "provided": f"₹{income_val:,.0f}",
-                        "note": "Family income exceeds the maximum allowed",
-                    })
-
-    # --- gender ---
-    if c.gender and c.gender.lower() != "any":
-        student_gender = student_info.get("gender")
-        if student_gender is None:
-            unknown.append({
-                "criterion": "gender",
-                "required": c.gender,
-                "provided": None,
-                "note": "Not provided by student",
-            })
-        elif student_gender.lower().strip() == c.gender.lower().strip():
-            satisfied.append({
-                "criterion": "gender",
-                "required": c.gender,
-                "provided": student_gender,
-            })
-        else:
-            unsatisfied.append({
-                "criterion": "gender",
-                "required": c.gender,
-                "provided": student_gender,
-                "note": "Gender does not meet scheme requirement",
-            })
-
-    # Determine overall status
-    if unsatisfied:
-        status = STATUS_NOT_ELIGIBLE
-    elif unknown:
-        status = STATUS_MORE_INFO_NEEDED
-    else:
-        status = STATUS_POTENTIAL_MATCH
-
+    raw = evaluate_scheme(scheme.criterion_list, student_info)
     return {
         "scheme_id": scheme.id,
         "scheme_name": scheme.name,
-        "status": status,
-        "satisfied_criteria": satisfied,
-        "unsatisfied_criteria": unsatisfied,
-        "unknown_criteria": unknown,
-        "additional_notes": c.notes,
+        "status": raw["status"],
+        "satisfied_criteria": raw["satisfied_criteria"],
+        "unsatisfied_criteria": raw["unsatisfied_criteria"],
+        "unknown_criteria": raw["unknown_criteria"],
+        "additional_notes": scheme.criteria.notes,
         "disclaimer": ELIGIBILITY_DISCLAIMER,
     }
 

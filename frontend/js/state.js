@@ -2,17 +2,20 @@
  * EduSaarthi AI — state.js
  *
  * Single source of truth for client-side application state, with lightweight
- * local persistence for investigation history and saved plans.
+ * local persistence for conversation history.
  *
  * Persistence note: conversation text is stored in the user's own browser so
- * that investigation history works. Only what the user typed is stored; no
- * credentials or privileged data are kept here.
+ * that history works. Only what the user typed is stored; no credentials or
+ * privileged data are kept here.
+ *
+ * Backward compatibility: the internal data structure still uses
+ * "investigations" to preserve localStorage compatibility with existing data.
  * ========================================================================== */
 (function () {
   "use strict";
 
   var STORAGE_KEY = "edusaarthi.v1";
-  var MAX_INVESTIGATIONS = 40;
+  var MAX_CONVERSATIONS = 40;
   var MAX_MESSAGES = 60;
 
   var listeners = [];
@@ -38,11 +41,11 @@
     }
   }
 
-  function createInvestigation() {
+  function createConversation() {
     var now = Date.now();
     return {
       id: uid("inv"),
-      title: "New investigation",
+      title: "",
       createdAt: now,
       updatedAt: now,
       conversationId: null,
@@ -54,10 +57,9 @@
 
   function defaultState() {
     return {
-      view: "investigation",
       demoMode: false,
       sidebarOpen: false,
-      mobileView: "chat",
+      sidebarCollapsed: false,
       request: { status: "idle", error: null, lastMessage: null },
       investigations: [],
       activeId: null,
@@ -95,19 +97,11 @@
     }
     if (typeof parsed.demoMode === "boolean") base.demoMode = parsed.demoMode;
     if (typeof parsed.activeId === "string") base.activeId = parsed.activeId;
+    if (typeof parsed.sidebarCollapsed === "boolean") base.sidebarCollapsed = parsed.sidebarCollapsed;
     if (parsed.studentProfile && typeof parsed.studentProfile === "object") {
       base.studentProfile = parsed.studentProfile;
     }
 
-    // Ensure there is always a usable active investigation.
-    var active = base.investigations.filter(function (i) {
-      return i.id === base.activeId;
-    })[0];
-    if (!active) {
-      var created = createInvestigation();
-      base.investigations.unshift(created);
-      base.activeId = created.id;
-    }
     return base;
   }
 
@@ -116,9 +110,10 @@
       var slim = {
         demoMode: state.demoMode,
         activeId: state.activeId,
+        sidebarCollapsed: state.sidebarCollapsed,
         studentProfile: state.studentProfile || {},
         savedPlans: state.savedPlans,
-        investigations: state.investigations.slice(0, MAX_INVESTIGATIONS).map(function (inv) {
+        investigations: state.investigations.slice(0, MAX_CONVERSATIONS).map(function (inv) {
           return {
             id: inv.id,
             title: inv.title,
@@ -142,7 +137,6 @@
       try {
         listeners[i](state);
       } catch (e) {
-        /* Keep one broken listener from stopping the rest. */
         if (window.console && console.error) console.error(e);
       }
     }
@@ -166,7 +160,7 @@
     return null;
   }
 
-  function isEmptyInvestigation(inv) {
+  function isEmptyConversation(inv) {
     return (
       inv &&
       (!inv.messages || inv.messages.length === 0) &&
@@ -177,18 +171,34 @@
 
   function titleFromMessage(text) {
     var clean = String(text || "").replace(/\s+/g, " ").trim();
-    if (!clean) return "New investigation";
+    if (!clean) return "";
     if (clean.length <= 64) return clean;
-    return clean.slice(0, 61).trim() + "…";
+    return clean.slice(0, 61).trim() + "\u2026";
+  }
+
+  /**
+   * Group conversations by recency for sidebar display.
+   * Returns { today: [], yesterday: [], thisWeek: [], older: [] }
+   */
+  function groupByRecency() {
+    var now = new Date();
+    var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    var yesterdayStart = todayStart - 86400000;
+    var weekStart = todayStart - 6 * 86400000;
+
+    var groups = { today: [], yesterday: [], thisWeek: [], older: [] };
+    state.investigations.forEach(function (inv) {
+      if (isEmptyConversation(inv)) return;
+      var t = inv.updatedAt || inv.createdAt;
+      if (t >= todayStart) groups.today.push(inv);
+      else if (t >= yesterdayStart) groups.yesterday.push(inv);
+      else if (t >= weekStart) groups.thisWeek.push(inv);
+      else groups.older.push(inv);
+    });
+    return groups;
   }
 
   /* ------------------------------- actions ------------------------------- */
-
-  function setView(view) {
-    commit(function (s) {
-      s.view = view;
-    });
-  }
 
   function setDemoMode(on) {
     commit(function (s) {
@@ -202,10 +212,10 @@
     }, true);
   }
 
-  function setMobileView(view) {
+  function setSidebarCollapsed(collapsed) {
     commit(function (s) {
-      s.mobileView = view === "panel" ? "panel" : "chat";
-    }, true);
+      s.sidebarCollapsed = !!collapsed;
+    });
   }
 
   function setStudentProfile(profile) {
@@ -214,46 +224,48 @@
     });
   }
 
-  function newInvestigation(force) {
+  function newConversation(force) {
     var active = getActive();
-    if (active && isEmptyInvestigation(active) && !force) {
-      commit(function (s) {
-        s.view = "investigation";
-      });
+    if (active && isEmptyConversation(active) && !force) {
       return active.id;
     }
-    var created = createInvestigation();
+    var created = createConversation();
     commit(function (s) {
       s.investigations.unshift(created);
       s.activeId = created.id;
-      s.view = "investigation";
       s.request = { status: "idle", error: null, lastMessage: null };
     });
     return created.id;
   }
 
-  function loadInvestigation(id) {
+  function loadConversation(id) {
     var found = state.investigations.filter(function (i) {
       return i.id === id;
     })[0];
     if (!found) return false;
     commit(function (s) {
       s.activeId = id;
-      s.view = "investigation";
       s.request = { status: "idle", error: null, lastMessage: null };
     });
     return true;
   }
 
-  function deleteInvestigation(id) {
+  function deleteConversation(id) {
     commit(function (s) {
       s.investigations = s.investigations.filter(function (i) {
         return i.id !== id;
       });
       if (s.activeId === id) {
-        var created = createInvestigation();
-        s.investigations.unshift(created);
-        s.activeId = created.id;
+        s.activeId = null;
+      }
+    });
+  }
+
+  function renameConversation(id, newTitle) {
+    commit(function (s) {
+      var inv = s.investigations.filter(function (i) { return i.id === id; })[0];
+      if (inv) {
+        inv.title = String(newTitle || "").trim();
       }
     });
   }
@@ -261,7 +273,7 @@
   function renameActiveFromMessage(text) {
     var active = getActive();
     if (!active) return;
-    if (active.title && active.title !== "New investigation") return;
+    if (active.title) return;
     commit(function () {
       active.title = titleFromMessage(text);
     });
@@ -369,39 +381,12 @@
     });
   }
 
-  /* ------------------------------- sources ------------------------------- */
-
-  function getAllSources() {
-    var seen = {};
-    var out = [];
-    state.investigations.forEach(function (inv) {
-      var sources = (inv.result && inv.result.sources) || [];
-      sources.forEach(function (src) {
-        var key = (src.id || "") + "|" + (src.url || src.title || "");
-        if (seen[key]) {
-          seen[key].investigations = seen[key].investigations + 1;
-          return;
-        }
-        seen[key] = {
-          id: src.id,
-          title: src.title,
-          url: src.url,
-          investigationTitle: inv.title,
-          investigationId: inv.id
-        };
-        out.push(seen[key]);
-      });
-    });
-    return out;
-  }
-
   /* ------------------------------- lifecycle ------------------------------- */
 
   function init() {
     state = loadPersisted();
-    // Re-clone to detach from localStorage references and normalise shape.
     state.investigations = state.investigations.map(function (inv) {
-      return Object.assign(createInvestigation(), inv, {
+      return Object.assign(createConversation(), inv, {
         messages: inv.messages || [],
         events: inv.events || []
       });
@@ -426,18 +411,19 @@
       return state;
     },
     getActive: getActive,
-    getAllSources: getAllSources,
-    createInvestigation: createInvestigation,
+    groupByRecency: groupByRecency,
+    createConversation: createConversation,
     uid: uid,
     clone: clone,
-    setView: setView,
+    isEmptyConversation: isEmptyConversation,
     setDemoMode: setDemoMode,
     setSidebarOpen: setSidebarOpen,
-    setMobileView: setMobileView,
+    setSidebarCollapsed: setSidebarCollapsed,
     setStudentProfile: setStudentProfile,
-    newInvestigation: newInvestigation,
-    loadInvestigation: loadInvestigation,
-    deleteInvestigation: deleteInvestigation,
+    newConversation: newConversation,
+    loadConversation: loadConversation,
+    deleteConversation: deleteConversation,
+    renameConversation: renameConversation,
     renameActiveFromMessage: renameActiveFromMessage,
     setConversationId: setConversationId,
     appendMessage: appendMessage,

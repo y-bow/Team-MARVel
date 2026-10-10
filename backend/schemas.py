@@ -227,7 +227,7 @@ def _typed_from_flat(raw: dict[str, Any]) -> list[Criterion]:
             field="annual_family_income", operator="lte",
             value=float(raw["annual_family_income_max"]),
         ))
-    if raw.get("gender"):
+    if raw.get("gender") and str(raw["gender"]).lower() != "any":
         typed.append(Criterion(field="gender", operator="eq", value=raw["gender"]))
     if raw.get("disability_required") is not None:
         typed.append(Criterion(

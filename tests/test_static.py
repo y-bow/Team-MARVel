@@ -16,7 +16,7 @@ def test_root_serves_frontend_index(client):
 
 def test_root_index_contains_app_shell(client):
     response = client.get("/")
-    assert b'id="workspace"' in response.data
+    assert b'id="chatView"' in response.data
     assert b"composer" in response.data
 
 

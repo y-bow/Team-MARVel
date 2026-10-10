@@ -8,7 +8,7 @@
   <title>EduSaarthi AI — Student Opportunity Navigator</title>
   <link
     rel="icon"
-    href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%232563eb'/%3E%3Cpath%20d='M16%206v8M10%209l6%205%206-5M7%2017h18M11%2017v5M21%2017v5'%20fill='none'%20stroke='white'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E"
+    href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M16 6v8M10 9l6 5 6-5M7 17h18M11 17v5M21 17v5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
   />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -21,8 +21,8 @@
   <link rel="stylesheet" href="css/components.css" />
   <link rel="stylesheet" href="css/responsive.css" />
 </head>
-<body data-mobile-view="chat">
-  <a class="skip-link" href="#workspace">Skip to investigation workspace</a>
+<body>
+  <a class="skip-link" href="#chatArea">Skip to chat</a>
 
   <!-- ===================== Icon sprite (trusted, static markup) ===================== -->
   <svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
@@ -60,61 +60,48 @@
       <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></symbol>
       <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></symbol>
       <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36z" /></symbol>
+      <symbol id="i-panel-left" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /></symbol>
+      <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></symbol>
+      <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></symbol>
+      <symbol id="i-sidebar" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /><path d="M14 9h3" /><path d="M14 13h3" /></symbol>
     </defs>
   </svg>
 
   <div class="app" id="app">
     <!-- ============================== Sidebar ============================== -->
-    <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
-      <div class="sidebar__top">
+    <aside class="sidebar" id="sidebar" aria-label="Conversations">
+      <div class="sidebar__header">
         <a class="brand" href="#" id="brandLink" aria-label="EduSaarthi home">
           <span class="brand__mark" aria-hidden="true"></span>
           <span class="brand__text">
             <span class="brand__name">EduSaarthi</span>
-            <span class="brand__sub">AI Opportunity Navigator</span>
+            <span class="brand__sub">AI Scholarship Assistant</span>
           </span>
         </a>
-
-        <button type="button" class="btn btn--accent btn--block" id="newInvestigationBtn">
-          <span class="btn__icon" data-icon="i-plus"></span>
-          <span>New investigation</span>
+        <button
+          type="button"
+          class="icon-btn sidebar__collapse"
+          id="sidebarCollapseBtn"
+          aria-label="Collapse sidebar"
+        >
+          <span data-icon="i-sidebar"></span>
         </button>
-
-        <nav class="nav" aria-label="Sections">
-          <button type="button" class="nav__item" data-view="investigation" id="navInvestigation">
-            <span class="nav__icon" data-icon="i-compass"></span>
-            <span class="nav__label">Investigation</span>
-          </button>
-          <button type="button" class="nav__item" data-view="history">
-            <span class="nav__icon" data-icon="i-history"></span>
-            <span class="nav__label">Investigations</span>
-            <span class="nav__count" id="navCountHistory" hidden></span>
-          </button>
-          <button type="button" class="nav__item" data-view="saved">
-            <span class="nav__icon" data-icon="i-bookmark"></span>
-            <span class="nav__label">Saved plans</span>
-            <span class="nav__count" id="navCountSaved" hidden></span>
-          </button>
-          <button type="button" class="nav__item" data-view="sources">
-            <span class="nav__icon" data-icon="i-link"></span>
-            <span class="nav__label">Sources</span>
-          </button>
-        </nav>
       </div>
 
-      <div class="sidebar__bottom">
-        <div class="sidebar__profile" style="padding: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px;">
-          <h3 style="font-size: 0.875rem; margin-bottom: 8px;">Student Profile</h3>
-          <form id="studentProfileForm" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.875rem;">
-            <input type="text" name="education_level" placeholder="Course/Branch (e.g. UG, 10th)" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
-            <input type="text" name="year_of_study" placeholder="Current year of study" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
-            <input type="text" name="state" placeholder="State/domicile" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
-            <input type="number" name="annual_family_income" placeholder="Annual family income" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
-            <input type="number" name="percentage" placeholder="Previous marks (%)" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
-            <input type="text" name="caste_category" placeholder="Category (e.g. SC, ST, General)" style="padding: 6px; border: 1px solid var(--border); border-radius: 4px;">
-            <button type="submit" class="btn btn--accent" style="padding: 6px;">Save Profile</button>
-          </form>
-        </div>
+      <button type="button" class="btn btn--accent btn--block sidebar__new-chat" id="newChatBtn">
+        <span class="btn__icon" data-icon="i-plus"></span>
+        <span>New chat</span>
+      </button>
+
+      <div class="sidebar__conversations" id="sidebarConversations">
+        <!-- Rendered by render.js -->
+      </div>
+
+      <div class="sidebar__footer">
+        <button type="button" class="sidebar__profile-btn" id="profileBtn">
+          <span data-icon="i-user"></span>
+          <span>Student Profile</span>
+        </button>
 
         <div class="demo-toggle" role="group" aria-label="Demo mode">
           <div class="demo-toggle__text">
@@ -147,7 +134,7 @@
     <div class="scrim" id="sidebarScrim" hidden></div>
 
     <!-- ============================== Main ============================== -->
-    <main class="main" id="workspace" tabindex="-1">
+    <main class="main" id="chatArea" tabindex="-1">
       <header class="topbar">
         <button
           type="button"
@@ -160,9 +147,18 @@
           <span data-icon="i-menu"></span>
         </button>
 
+        <button
+          type="button"
+          class="icon-btn topbar__expand"
+          id="sidebarExpandBtn"
+          aria-label="Expand sidebar"
+          hidden
+        >
+          <span data-icon="i-sidebar"></span>
+        </button>
+
         <div class="topbar__title">
-          <h1 id="viewTitle">Investigation</h1>
-          <p id="viewSubtitle">Describe your situation to begin.</p>
+          <h1 id="viewTitle">EduSaarthi AI</h1>
         </div>
 
         <div class="topbar__right">
@@ -170,24 +166,6 @@
             <span class="demo-badge__dot" aria-hidden="true"></span>
             Demo data
           </span>
-          <div class="mobile-tabs" role="tablist" aria-label="Workspace view">
-            <button
-              type="button"
-              class="mobile-tabs__btn is-active"
-              id="tabChat"
-              role="tab"
-              aria-selected="true"
-              data-mobile-tab="chat"
-            >Conversation</button>
-            <button
-              type="button"
-              class="mobile-tabs__btn"
-              id="tabPanel"
-              role="tab"
-              aria-selected="false"
-              data-mobile-tab="panel"
-            >Investigation</button>
-          </div>
         </div>
       </header>
 
@@ -237,36 +215,54 @@
           </form>
         </div>
       </section>
-
-      <!-- List views (history / saved / sources) -->
-      <section class="list-view" id="listView" aria-label="Lists" hidden>
-        <div class="list" id="listContent"><!-- Rendered by render.js --></div>
-      </section>
     </main>
-
-    <!-- ============================== Investigation panel ============================== -->
-    <aside class="panel" id="panel" aria-label="Investigation activity and results">
-      <header class="panel__head">
-        <button
-          type="button"
-          class="panel__back"
-          id="panelBack"
-          aria-label="Back to conversation"
-        >
-          <span data-icon="i-arrow-right"></span>
-        </button>
-        <div class="panel__head-text">
-          <h2 class="panel__title">Investigation</h2>
-          <p class="panel__sub" id="panelSub">Activity and findings</p>
-        </div>
-        <span class="status-badge status-badge--idle" id="panelStatus" data-status="idle">Idle</span>
-      </header>
-
-      <div class="panel__body" id="panelBody" aria-live="polite">
-        <!-- Rendered by render.js -->
-      </div>
-    </aside>
   </div>
+
+  <!-- ============================== Profile Dialog ============================== -->
+  <dialog class="profile-dialog" id="profileDialog" aria-label="Student Profile">
+    <div class="profile-dialog__backdrop" data-action="close-profile"></div>
+    <div class="profile-dialog__content">
+      <div class="profile-dialog__header">
+        <h2 class="profile-dialog__title">Student Profile</h2>
+        <button type="button" class="icon-btn" data-action="close-profile" aria-label="Close">
+          <span data-icon="i-x"></span>
+        </button>
+      </div>
+      <p class="profile-dialog__desc">
+        Your profile helps match you with relevant scholarships. Information is stored locally in your browser.
+      </p>
+      <form id="studentProfileForm" class="profile-dialog__form">
+        <div class="profile-dialog__field">
+          <label for="profileEducation">Education level / Course</label>
+          <input type="text" id="profileEducation" name="education_level" placeholder="e.g. UG, 10th, B.Tech CSE">
+        </div>
+        <div class="profile-dialog__field">
+          <label for="profileYear">Current year of study</label>
+          <input type="text" id="profileYear" name="year_of_study" placeholder="e.g. 2nd year, Final year">
+        </div>
+        <div class="profile-dialog__field">
+          <label for="profileState">State / Domicile</label>
+          <input type="text" id="profileState" name="state" placeholder="e.g. Maharashtra, Karnataka">
+        </div>
+        <div class="profile-dialog__field">
+          <label for="profileIncome">Annual family income (INR)</label>
+          <input type="number" id="profileIncome" name="annual_family_income" placeholder="e.g. 300000">
+        </div>
+        <div class="profile-dialog__field">
+          <label for="profileMarks">Previous marks (%)</label>
+          <input type="number" id="profileMarks" name="percentage" placeholder="e.g. 75" min="0" max="100">
+        </div>
+        <div class="profile-dialog__field">
+          <label for="profileCategory">Category</label>
+          <input type="text" id="profileCategory" name="caste_category" placeholder="e.g. SC, ST, OBC, General">
+        </div>
+        <div class="profile-dialog__actions">
+          <button type="button" class="btn btn--ghost" data-action="close-profile">Cancel</button>
+          <button type="submit" class="btn btn--accent">Save Profile</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
 
   <div class="toast-region" id="toastRegion" aria-live="assertive" aria-atomic="false"></div>
 
