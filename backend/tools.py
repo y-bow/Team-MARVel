@@ -85,6 +85,14 @@ def _validate_scheme_id(scheme_id: Any) -> str:
     return sid
 
 
+def _validate_k(k: Any, default: int = 5) -> int:
+    try:
+        val = int(k)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(val, 20))
+
+
 def _error_response(code: str, message: str) -> dict[str, Any]:
     return {"error": True, "error_code": code, "message": message}
 
@@ -495,4 +503,34 @@ def create_action_plan(
         "scheme_ids": scheme_ids,
         "steps": steps,
         "disclaimer": ACTION_PLAN_DISCLAIMER,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool 6: retrieve_evidence
+# ---------------------------------------------------------------------------
+
+def retrieve_evidence(
+    repository: BaseRepository,
+    query: str,
+    k: int = 5,
+) -> dict[str, Any]:
+    """
+    Retrieve the most relevant evidence chunks from the knowledge base.
+
+    Returns scheme-grounded text snippets with source URLs and evidence
+    metadata so the model can cite official sources. Never invents content.
+    """
+    try:
+        query = _validate_str(query, "query", max_len=500)
+    except ValueError as exc:
+        return _error_response("INVALID_INPUT", str(exc))
+
+    k = _validate_k(k, default=5)
+    chunks = repository.retrieve(query=query, k=k)
+
+    return {
+        "query": query,
+        "result_count": len(chunks),
+        "results": chunks,
     }

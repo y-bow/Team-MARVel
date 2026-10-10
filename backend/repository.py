@@ -22,7 +22,7 @@ from abc import ABC, abstractmethod
 from datetime import date
 from typing import Any, Optional
 
-from backend.schemas import SchemeRecord, scheme_from_dict
+from backend.schemas import SchemeRecord, scheme_from_dict, build_chunks
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +66,21 @@ class BaseRepository(ABC):
     @abstractmethod
     def count(self) -> int:
         """Return total number of schemes in the repository."""
+
+    def retrieve(self, query: str, k: int = 5) -> list[dict[str, Any]]:
+        """
+        Return the top-k evidence chunks most relevant to *query*.
+
+        Each chunk carries scheme_id, scheme_name, source_url, chunk_type,
+        text, and optional evidence metadata. Returns [] when nothing matches.
+        Default implementation scores chunks loaded by ``_load_chunks`` with
+        the same TF-style token overlap used by ``search``.
+        """
+        raise NotImplementedError
+
+    def _load_chunks(self) -> list[dict[str, Any]]:
+        """Build the full chunk index. Called once at load time."""
+        raise NotImplementedError
 
     def data_quality(self, stale_days: int = 30) -> dict[str, Any]:
         """
@@ -156,6 +171,7 @@ class JSONRepository(BaseRepository):
         self._data_path = data_path
         self._schemes: dict[str, SchemeRecord] = {}
         self._ordered: list[SchemeRecord] = []
+        self._chunks: list[dict[str, Any]] = []
         self._load()
 
     # ------------------------------------------------------------------
@@ -198,6 +214,8 @@ class JSONRepository(BaseRepository):
             f"[repository] Loaded {len(self._schemes)} schemes "
             f"({skipped} skipped) from {self._data_path!r}"
         )
+        self._chunks = self._load_chunks()
+        print(f"[repository] Built {len(self._chunks)} retrieval chunks")
 
     # ------------------------------------------------------------------
     # Public interface
@@ -258,6 +276,21 @@ class JSONRepository(BaseRepository):
     def _records_for_quality(self) -> list[SchemeRecord]:
         return list(self._ordered)
 
+    def _load_chunks(self) -> list[dict[str, Any]]:
+        chunks: list[dict[str, Any]] = []
+        for scheme in self._ordered:
+            chunks.extend(build_chunks(scheme))
+        return chunks
+
+    def retrieve(self, query: str, k: int = 5) -> list[dict[str, Any]]:
+        tokens = _tokenize(query)
+        scored = [
+            (_score_text(chunk["text"], tokens), chunk)
+            for chunk in self._chunks
+        ]
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        return [chunk for score, chunk in scored[:k] if score > 0]
+
 
 # ---------------------------------------------------------------------------
 # Private helpers
@@ -282,6 +315,12 @@ def _score(scheme: SchemeRecord, query_tokens: list[str]) -> int:
     ]).lower()
 
     return sum(haystack.count(tok) for tok in query_tokens)
+
+
+def _score_text(text: str, query_tokens: list[str]) -> int:
+    """TF-style token count over a plain text field."""
+    lower = text.lower()
+    return sum(lower.count(tok) for tok in query_tokens)
 
 
 def _matches_education(scheme: SchemeRecord, level: str) -> bool:

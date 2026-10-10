@@ -76,6 +76,8 @@ Your core principles:
 7. Always include the disclaimer when reporting eligibility.
 8. When you need specific information from the student before you can
    continue, call ask_clarification with the question and short options.
+9. When using retrieve_evidence results, cite the source_url for any
+   factual claim and include the evidence_quote when quoting verbatim.
 
 Output style: concise, warm, and action-oriented. Use bullet points for lists.
 """
@@ -238,6 +240,31 @@ _TOOL_DECLARATIONS = [
                 ),
             },
             required=["question"],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="retrieve_evidence",
+        description=(
+            "Search the knowledge base for evidence-grounded information "
+            "about scholarships, eligibility criteria, required documents, "
+            "deadlines, and official source quotes. Returns chunks with "
+            "source URLs and evidence quotes you can cite in your answer. "
+            "Prefer this over search_schemes when you need specific factual "
+            "details to support your response."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "query": types.Schema(
+                    type=types.Type.STRING,
+                    description="Search query, e.g. 'SC scholarship income limit documents'.",
+                ),
+                "k": types.Schema(
+                    type=types.Type.INTEGER,
+                    description="Number of evidence chunks to retrieve (default 5, max 20).",
+                ),
+            },
+            required=["query"],
         ),
     ),
 ]
@@ -616,6 +643,11 @@ def build_tool_registry(repository: BaseRepository, config: Config) -> dict[str,
             eligibility_results=kw.get("eligibility_results", []),
             missing_info=kw.get("missing_info", []),
         ),
+        "retrieve_evidence": lambda **kw: tool_fns.retrieve_evidence(
+            repository,
+            query=kw["query"],
+            k=kw.get("k", 5),
+        ),
     }
 
 
@@ -993,6 +1025,15 @@ def _collect_optional_fields(
         _collect_eligibility(result, eligibility)
     elif tool_name == "get_requirements":
         _collect_requirements(result, documents, steps)
+    elif tool_name == "retrieve_evidence":
+        for chunk in result.get("results") or []:
+            if isinstance(chunk, dict) and chunk.get("source_url") and chunk.get("scheme_id"):
+                sid = chunk["scheme_id"]
+                sources_map[sid] = {
+                    "id": sid,
+                    "title": chunk.get("scheme_name", sid),
+                    "url": chunk["source_url"],
+                }
 
 
 def _collect_matches(result: dict[str, Any], matches: list[dict[str, Any]]) -> None:

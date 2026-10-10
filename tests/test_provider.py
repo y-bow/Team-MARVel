@@ -89,6 +89,7 @@ class TestSchemaTranslation:
             "verify_deadline",
             "create_action_plan",
             "ask_clarification",
+            "retrieve_evidence",
         ]
         for entry in tools:
             assert entry["type"] == "function"

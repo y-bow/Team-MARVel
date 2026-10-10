@@ -112,6 +112,9 @@ CRITERION_FIELDS = {
 
 CRITERION_OPERATORS = {"in", "eq", "gte", "lte"}
 
+# Evidence chunk types — each chunk is a retrieval unit.
+CHUNK_TYPES = {"criteria", "documents", "steps", "deadline", "evidence", "summary"}
+
 
 # ---------------------------------------------------------------------------
 # Scheme record — canonical shape
@@ -512,3 +515,95 @@ def validate_dataset(raw: Any) -> list[str]:
                 errors.append(f"duplicate scheme id: {rid!r}")
             seen_ids.add(rid)
     return errors
+
+# ---------------------------------------------------------------------------
+# Evidence chunking — produces retrieval units per scheme
+# ---------------------------------------------------------------------------
+
+def _operator_label(op: str, value: Any) -> str:
+    if op == "in":
+        return f"One of: {value}"
+    if op == "gte":
+        return f">= {value}"
+    if op == "lte":
+        return f"<= {value}"
+    return str(value)
+
+
+def build_chunks(scheme: SchemeRecord) -> list[dict[str, Any]]:
+    """
+    Split one scheme into retrieval-friendly evidence chunks.
+
+    Each chunk is a dict with: scheme_id, scheme_name, source_url, chunk_type,
+    text, checked_at, and (for evidence items) evidence_id, evidence_field,
+    evidence_quote.
+    """
+    base = {
+        "scheme_id": scheme.id,
+        "scheme_name": scheme.name,
+        "source_url": scheme.source_url or "",
+        "checked_at": scheme.last_checked or "",
+    }
+
+    chunks: list[dict[str, Any]] = []
+
+    # summary chunk
+    tags = ", ".join(scheme.tags) if scheme.tags else ""
+    text = f"{scheme.name}. {scheme.description}"
+    if tags:
+        text += f" Tags: {tags}."
+    chunks.append({**base, "chunk_type": "summary", "text": text})
+
+    # criteria chunk
+    if scheme.criterion_list:
+        lines = []
+        for criterion in scheme.criterion_list:
+            label = _operator_label(criterion.operator, criterion.value)
+            lines.append(f"{criterion.field}: {label}")
+        if scheme.criteria.notes:
+            lines.append(f"Notes: {scheme.criteria.notes}")
+        chunks.append({
+            **base,
+            "chunk_type": "criteria",
+            "text": f"Eligibility criteria for {scheme.name}: " + "; ".join(lines) + ".",
+        })
+
+    # documents chunk
+    if scheme.documents:
+        chunks.append({
+            **base,
+            "chunk_type": "documents",
+            "text": f"Required documents for {scheme.name}: " + ", ".join(scheme.documents) + ".",
+        })
+
+    # application steps chunk
+    if scheme.application_steps:
+        numbered = [
+            f"{i}. {step}" for i, step in enumerate(scheme.application_steps, 1)
+        ]
+        chunks.append({
+            **base,
+            "chunk_type": "steps",
+            "text": f"Application steps for {scheme.name}: " + " ".join(numbered),
+        })
+
+    # deadline chunk
+    if scheme.deadline:
+        dl = f"Deadline for {scheme.name}: {scheme.deadline}."
+        if scheme.last_checked:
+            dl += f" Last verified: {scheme.last_checked}."
+        chunks.append({**base, "chunk_type": "deadline", "text": dl})
+
+    # individual evidence items (verbatim quotes)
+    for item in scheme.evidence:
+        chunks.append({
+            **base,
+            "chunk_type": "evidence",
+            "text": f"[{item.field}] {item.quote}",
+            "evidence_id": item.id,
+            "evidence_field": item.field,
+            "evidence_quote": item.quote,
+            "checked_at": item.checked_at or base["checked_at"],
+        })
+
+    return chunks
