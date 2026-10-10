@@ -1,19 +1,23 @@
 """
 test_integration.py — optional integration tests against the live OpenRouter API.
 
-These tests are SKIPPED unless OPENROUTER_API_KEY is set in the environment.
-They make real API calls and should NOT be run in CI without a budget guard.
+These tests make real API calls and are SKIPPED unless explicitly enabled with
+EDUSAARTHI_LIVE_TESTS=1 (key presence alone is not enough: dotenv auto-loads
+.env into the environment during test collection).
 
 Run manually:
-    OPENROUTER_API_KEY=your_key pytest tests/test_integration.py -v
+    EDUSAARTHI_LIVE_TESTS=1 OPENROUTER_API_KEY=your_key pytest tests/test_integration.py -v
 """
 
 import os
 import pytest
 
-SKIP_REASON = "OPENROUTER_API_KEY not set — skipping integration tests"
+SKIP_REASON = (
+    "Live integration tests disabled. "
+    "Set EDUSAARTHI_LIVE_TESTS=1 (with OPENROUTER_API_KEY) to run."
+)
 pytestmark = pytest.mark.skipif(
-    not os.getenv("OPENROUTER_API_KEY"), reason=SKIP_REASON
+    os.getenv("EDUSAARTHI_LIVE_TESTS") != "1", reason=SKIP_REASON
 )
 
 

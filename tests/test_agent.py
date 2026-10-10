@@ -258,3 +258,56 @@ class TestConversationState:
         agent = make_agent(mock_provider, repository, test_config)
         result = agent.run("Hi", conversation_id="totally-unknown-id-xyz")
         assert result.conversation_id is not None
+
+
+# ---------------------------------------------------------------------------
+# Explicit clarification tool
+# ---------------------------------------------------------------------------
+
+class TestClarificationTool:
+    def test_clarification_tool_ends_loop_with_structured_question(
+        self, mock_provider, repository, test_config
+    ):
+        mock_provider.generate.return_value = make_function_call_response(
+            "ask_clarification",
+            {"question": "Which state?", "options": ["Maharashtra"]},
+        )
+        agent = make_agent(mock_provider, repository, test_config)
+        result = agent.run("Help me")
+        assert result.status == "needs_clarification"
+        assert result.clarification == {"question": "Which state?", "options": ["Maharashtra"]}
+        assert result.answer == "Which state?"
+        mock_provider.generate.assert_called_once()
+
+    def test_clarification_call_recorded_in_conversation_history(
+        self, mock_provider, repository, test_config
+    ):
+        mock_provider.generate.return_value = make_function_call_response(
+            "ask_clarification", {"question": "Which state?"}
+        )
+        agent = make_agent(mock_provider, repository, test_config)
+        result = agent.run("Help me")
+
+        captured = {}
+
+        def capture(*args, **kwargs):
+            captured["contents"] = list(kwargs["contents"])
+            return make_text_response("Welcome back.")
+
+        mock_provider.generate.side_effect = capture
+        follow_up = agent.run("Maharashtra", conversation_id=result.conversation_id)
+        assert follow_up.status == "completed"
+        contents = captured["contents"]
+        assert len(contents) == 4
+        assert contents[0].parts[0].text == "Help me"
+        assert contents[2].parts[0].function_response is not None
+
+    def test_missing_question_is_not_treated_as_clarification(
+        self, mock_provider, repository, test_config
+    ):
+        mock_provider.generate.return_value = make_function_call_response(
+            "ask_clarification", {"question": "   "}
+        )
+        agent = make_agent(mock_provider, repository, test_config)
+        result = agent.run("Help me")
+        assert result.status != "needs_clarification"

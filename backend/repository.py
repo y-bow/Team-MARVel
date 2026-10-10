@@ -19,6 +19,7 @@ import json
 import os
 import re
 from abc import ABC, abstractmethod
+from datetime import date
 from typing import Any, Optional
 
 from backend.schemas import SchemeRecord, scheme_from_dict
@@ -65,6 +66,66 @@ class BaseRepository(ABC):
     @abstractmethod
     def count(self) -> int:
         """Return total number of schemes in the repository."""
+
+    def data_quality(self, stale_days: int = 30) -> dict[str, Any]:
+        """
+        Return a summary of record freshness for operational visibility.
+
+        Counts are derived deterministically from stored fields — never from
+        model output. 'stale' means last_checked is missing or older than
+        stale_days; 'past_deadlines' counts dates earlier than today.
+        """
+        today = date.today()
+        verified = 0
+        unverified = 0
+        past = 0
+        unknown_deadline = 0
+        never_checked = 0
+        stale = 0
+        oldest: Optional[str] = None
+
+        for scheme in self._records_for_quality():
+            if scheme.verified:
+                verified += 1
+            else:
+                unverified += 1
+
+            if not scheme.deadline:
+                unknown_deadline += 1
+            else:
+                try:
+                    if date.fromisoformat(scheme.deadline) < today:
+                        past += 1
+                except ValueError:
+                    unknown_deadline += 1
+
+            checked = scheme.last_checked
+            if not checked:
+                never_checked += 1
+                stale += 1
+            else:
+                if oldest is None or checked < oldest:
+                    oldest = checked
+                try:
+                    if (today - date.fromisoformat(checked)).days > stale_days:
+                        stale += 1
+                except ValueError:
+                    stale += 1
+
+        return {
+            "as_of": today.isoformat(),
+            "records": self.count(),
+            "verified": verified,
+            "unverified": unverified,
+            "past_deadlines": past,
+            "unknown_deadlines": unknown_deadline,
+            "never_checked": never_checked,
+            "stale_records": stale,
+            "oldest_last_checked": oldest,
+        }
+
+    def _records_for_quality(self) -> list["SchemeRecord"]:
+        raise NotImplementedError
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +250,9 @@ class JSONRepository(BaseRepository):
 
     def count(self) -> int:
         return len(self._schemes)
+
+    def _records_for_quality(self) -> list[SchemeRecord]:
+        return list(self._ordered)
 
 
 # ---------------------------------------------------------------------------

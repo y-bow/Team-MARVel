@@ -162,6 +162,7 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
             "model": cfg_.openrouter_model,
             "data_loaded": True,
             "scheme_count": repo_.count(),
+            "data_quality": repo_.data_quality(cfg_.deadline_stale_days),
         }), 200
 
     @app.post("/api/chat")

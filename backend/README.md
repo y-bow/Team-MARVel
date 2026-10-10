@@ -107,7 +107,7 @@ pytest
 pytest -v
 
 # Integration tests (requires a real OPENROUTER_API_KEY and uses paid quota)
-OPENROUTER_API_KEY=your_key pytest tests/test_integration.py -v
+EDUSAARTHI_LIVE_TESTS=1 OPENROUTER_API_KEY=your_key pytest tests/test_integration.py -v
 ```
 
 Tests use synthetic JSON data and mocked LLM responses. They run fully offline.

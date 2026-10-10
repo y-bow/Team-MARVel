@@ -47,3 +47,16 @@ def test_health_no_secrets_exposed(client):
     response_str = str(data)
     assert "test-api-key" not in response_str
     assert ".json" not in response_str
+
+
+def test_health_includes_data_quality_summary(client):
+    """Health must surface deterministic dataset freshness counts."""
+    data = client.get("/health").get_json()
+    quality = data["data_quality"]
+    assert quality["records"] == data["scheme_count"]
+    assert quality["verified"] + quality["unverified"] == quality["records"]
+    assert quality["past_deadlines"] == 1
+    assert quality["unknown_deadlines"] == 1
+    assert quality["never_checked"] == 1
+    assert quality["stale_records"] == 2
+    assert quality["oldest_last_checked"] == "2000-01-01"

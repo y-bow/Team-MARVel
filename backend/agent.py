@@ -62,6 +62,8 @@ Your core principles:
 5. If information is missing from the knowledge base, say so clearly.
 6. Never claim an application has been submitted on the student's behalf.
 7. Always include the disclaimer when reporting eligibility.
+8. When you need specific information from the student before you can
+   continue, call ask_clarification with the question and short options.
 
 Output style: concise, warm, and action-oriented. Use bullet points for lists.
 """
@@ -202,9 +204,36 @@ _TOOL_DECLARATIONS = [
             required=["goal", "scheme_ids", "eligibility_results", "missing_info"],
         ),
     ),
+    types.FunctionDeclaration(
+        name="ask_clarification",
+        description=(
+            "Ask the student a clarifying question when you need specific "
+            "information before you can continue (e.g. state, education level, "
+            "category). Prefer this over ending your answer with a question. "
+            "Provide short options when the choices are enumerable."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "question": types.Schema(
+                    type=types.Type.STRING,
+                    description="The clarifying question to ask the student.",
+                ),
+                "options": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(type=types.Type.STRING),
+                    description="Optional short answer options for the student.",
+                ),
+            },
+            required=["question"],
+        ),
+    ),
 ]
 
 _GEMINI_TOOL = types.Tool(function_declarations=_TOOL_DECLARATIONS)
+
+# Agent-internal tool: intercepted by AgentLoop, never executed as a data tool.
+CLARIFICATION_TOOL_NAME = "ask_clarification"
 
 
 # ---------------------------------------------------------------------------
@@ -657,6 +686,7 @@ class AgentLoop:
         iterations = 0
         max_iter = self._config.max_iterations
         tool_cache = {}
+        clarification_request: Optional[dict[str, Any]] = None
 
         while iterations < max_iter:
             iterations += 1
@@ -722,6 +752,37 @@ class AgentLoop:
             for fc in function_calls:
                 tool_name = fc.name or ""
                 raw_args = fc.args or {}
+
+                if tool_name == CLARIFICATION_TOOL_NAME:
+                    question = str(raw_args.get("question") or "").strip()
+                    options = [
+                        str(opt).strip()
+                        for opt in (raw_args.get("options") or [])
+                        if str(opt).strip()
+                    ][:6]
+                    if question:
+                        clarification_request = {
+                            "question": question,
+                            "options": options,
+                        }
+                        events.append({
+                            "tool": tool_name,
+                            "status": "completed",
+                            "summary": "Asked the student a clarifying question",
+                        })
+                    else:
+                        events.append({
+                            "tool": tool_name,
+                            "status": "error",
+                            "summary": "Clarification request missing a question",
+                        })
+                    tool_result_parts.append(
+                        types.Part.from_function_response(
+                            name=tool_name,
+                            response={"output": {"status": "clarification_requested"}},
+                        )
+                    )
+                    continue
 
                 if tool_name not in self._registry:
                     # Unregistered tool — return structured error to model
@@ -796,6 +857,9 @@ class AgentLoop:
                 types.Content(role="user", parts=tool_result_parts)
             )
 
+            if clarification_request:
+                break
+
         else:
             # Iteration limit hit
             final_text = (
@@ -816,13 +880,23 @@ class AgentLoop:
         if len(final_text) > max_len:
             final_text = final_text[:max_len] + "…"
 
-        # Determine status
-        status = _infer_status(final_text, events)
-
-        # Structured clarification when the agent needs more information.
-        clarification = None
-        if status == "needs_clarification":
-            clarification = {"question": final_text, "options": []}
+        # Determine status: an explicit ask_clarification call is authoritative.
+        # Otherwise a question from the agent counts as clarification only when
+        # the answer is not grounded in tool results (e.g. no trailing offers
+        # like "Would you like me to check eligibility?").
+        clarification = clarification_request
+        if clarification is not None:
+            status = "needs_clarification"
+            if clarification["question"]:
+                final_text = clarification["question"]
+        else:
+            grounded = bool(
+                sources_map or matches or eligibility or documents or steps
+                or action_plan
+            )
+            status = _infer_status(final_text, grounded=grounded)
+            if status == "needs_clarification":
+                clarification = {"question": final_text, "options": []}
 
         return AgentResponse(
             conversation_id=conversation_id,
@@ -910,14 +984,24 @@ def _collect_optional_fields(
 
 def _collect_matches(result: dict[str, Any], matches: list[dict[str, Any]]) -> None:
     """Collect scheme candidates surfaced by search_schemes (no fabricated fields)."""
+    seen = {
+        str(item.get("id") or item.get("title") or "").strip()
+        for item in matches
+        if isinstance(item, dict)
+    }
     for item in result.get("results") or []:
         if not isinstance(item, dict):
             continue
         title = str(item.get("name") or "").strip() or str(item.get("id") or "").strip()
         if not title:
             continue
+        mid = str(item.get("id") or "").strip()
+        key = mid or title
+        if key in seen:
+            continue
+        seen.add(key)
         matches.append({
-            "id": str(item.get("id") or "").strip(),
+            "id": mid,
             "title": title,
             "summary": str(item.get("description_snippet") or "").strip(),
             "url": str(item.get("source_url") or "").strip(),
@@ -967,12 +1051,15 @@ def _collect_requirements(
             steps.append(step)
 
 
-def _infer_status(answer: str, events: list[dict[str, str]]) -> str:
+def _infer_status(answer: str, grounded: bool = False) -> str:
     """
-    Infer the response status from the answer text and tool events.
-    Returns "needs_clarification" if the answer is a question,
-    "completed" otherwise.
+    Return the response status.
+
+    "needs_clarification" when the agent is asking the student a question and
+    the answer carries no grounded tool results; "completed" otherwise.
     """
+    if grounded:
+        return "completed"
     if answer.strip().endswith("?"):
         return "needs_clarification"
     return "completed"

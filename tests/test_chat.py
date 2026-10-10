@@ -364,3 +364,53 @@ def test_chat_events_never_emit_ok_or_error(client, mock_provider):
     data = client.post("/api/chat", json={"message": "scholarships"}).get_json()
     for event in data["events"]:
         assert event["status"] in ("queued", "running", "completed", "failed")
+
+
+# ---------------------------------------------------------------------------
+# Explicit clarification tool and grounded-status rules
+# ---------------------------------------------------------------------------
+
+def test_chat_ask_clarification_tool_sets_structured_status(client, mock_provider):
+    """An ask_clarification tool call is an authoritative clarification request."""
+    mock_provider.generate.return_value = make_function_call_response(
+        "ask_clarification",
+        {"question": "Which state are you from?", "options": ["Maharashtra", "Karnataka"]},
+    )
+    data = client.post("/api/chat", json={"message": "Help me"}).get_json()
+    assert data["status"] == "needs_clarification"
+    assert data["clarification"]["question"] == "Which state are you from?"
+    assert data["clarification"]["options"] == ["Maharashtra", "Karnataka"]
+    mock_provider.generate.assert_called_once()
+
+
+def test_chat_ask_clarification_event_is_completed(client, mock_provider):
+    mock_provider.generate.return_value = make_function_call_response(
+        "ask_clarification", {"question": "Which course?"}
+    )
+    data = client.post("/api/chat", json={"message": "Help me"}).get_json()
+    assert any(
+        e["tool"] == "ask_clarification" and e["status"] == "completed"
+        for e in data["events"]
+    )
+
+
+def test_chat_grounded_answer_ending_with_question_is_completed(client, mock_provider):
+    """Trailing offer-questions in grounded answers must not flip to clarification."""
+    mock_provider.generate.side_effect = [
+        make_function_call_response("search_schemes", {"query": "SC"}),
+        make_text_response("Here are schemes. Would you like me to check eligibility?"),
+    ]
+    data = client.post("/api/chat", json={"message": "SC scholarships"}).get_json()
+    assert data["status"] == "completed"
+    assert data.get("clarification") is None
+
+
+def test_chat_matches_deduplicated_across_searches(client, mock_provider):
+    mock_provider.generate.side_effect = [
+        make_function_call_response("search_schemes", {"query": "SC"}),
+        make_function_call_response("search_schemes", {"query": "SC"}),
+        make_text_response("Done."),
+    ]
+    data = client.post("/api/chat", json={"message": "SC"}).get_json()
+    ids = [m["id"] for m in data["matches"]]
+    assert len(ids) == len(set(ids))

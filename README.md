@@ -50,11 +50,11 @@ Offline tests use mocked LLM responses — no API key or paid calls:
 pytest
 ```
 
-Integration tests against the live API are skipped unless `OPENROUTER_API_KEY` is
-set:
+Integration tests against the live API are skipped unless `EDUSAARTHI_LIVE_TESTS=1`
+is set:
 
 ```bash
-OPENROUTER_API_KEY=your_key pytest tests/test_integration.py -v
+EDUSAARTHI_LIVE_TESTS=1 OPENROUTER_API_KEY=your_key pytest tests/test_integration.py -v
 ```
 
 ## Project structure
