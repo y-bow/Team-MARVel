@@ -28,30 +28,46 @@ class EligibilityCriteria:
     All fields are Optional — None means "not specified / no restriction".
     Tools MUST NOT invent criteria absent from the source data.
     """
+    # Academic year, e.g. "2024-25"
+    academic_year: Optional[str] = None
+    
     # Education level(s) that qualify, e.g. ["10th", "12th", "UG", "PG"].
-    # None or ["any"] means no restriction.
     education_levels: Optional[list[str]] = None
 
-    # Indian state name, e.g. "Maharashtra". None means all-India.
+    # Specific courses eligible, e.g. ["B.Tech", "MBBS"]
+    eligible_courses: Optional[list[str]] = None
+
+    # Type of institutions, e.g. ["Government", "Private", "Aided"]
+    institution_types: Optional[list[str]] = None
+
+    # Domicile requirement, e.g. "Maharashtra"
+    domicile: Optional[str] = None
+
+    # Indian state name (where applicable).
     state: Optional[str] = None
 
-    # Caste/reservation category. None or ["any"] means unrestricted.
+    # Caste/reservation category.
     caste_categories: Optional[list[str]] = None
 
-    # Minimum academic percentage required (0–100). None means no restriction.
+    # Minimum academic percentage required (0–100).
     min_percentage: Optional[float] = None
 
-    # Maximum annual family income in INR. None means no restriction.
+    # Details about merit requirements, e.g. "Top 1% of board"
+    merit_requirements: Optional[str] = None
+
+    # Maximum annual family income in INR.
     annual_family_income_max: Optional[float] = None
 
-    # Gender restriction. None or "any" means unrestricted.
+    # Gender restriction.
     gender: Optional[str] = None
 
-    # Whether a disability certificate is required (True) / not required (False)
-    # or not specified (None).
+    # Whether a disability certificate is required.
     disability_required: Optional[bool] = None
 
-    # Any additional free-form criteria notes sourced from the data.
+    # Evidence for criteria, mapping field name to source/page reference
+    evidence: dict[str, str] = field(default_factory=dict)
+
+    # Any additional free-form criteria notes.
     notes: Optional[str] = None
 
 
@@ -63,49 +79,42 @@ class EligibilityCriteria:
 class SchemeRecord:
     """
     A single government/private scheme or opportunity.
-
-    Fields map 1-to-1 to the JSON knowledge base. Source metadata is
-    stored alongside the claims it supports (source_url, verified,
-    last_checked) so downstream tools can propagate provenance.
     """
 
-    # Unique slug identifier, e.g. "nsp-pre-matric-2024"
     id: str
-
-    # Human-readable scheme name
     name: str
-
-    # Full description of the scheme (may be multi-sentence)
     description: str
-
-    # Structured eligibility criteria
     criteria: EligibilityCriteria
+    
+    # Provider and administering authority
+    provider: Optional[str] = None
+    administering_authority: Optional[str] = None
 
-    # List of required documents (strings). Empty list is valid.
+    # Award details
+    award_amount: Optional[str] = None
+    award_duration: Optional[str] = None
+    renewal_conditions: Optional[str] = None
+
     documents: list[str] = field(default_factory=list)
-
-    # Ordered application steps (strings). Empty list is valid.
     application_steps: list[str] = field(default_factory=list)
 
-    # Application deadline as ISO 8601 date string, e.g. "2024-03-31".
-    # None means unknown / not published.
+    # Dates
+    opening_date: Optional[str] = None
     deadline: Optional[str] = None
 
-    # Official portal or application URL.
-    # None means not available in the knowledge base.
+    # URLs
     source_url: Optional[str] = None
+    source_document_urls: list[str] = field(default_factory=list)
 
-    # True if the record has been verified against an authoritative source.
+    # Status & verification
     verified: bool = False
-
-    # ISO 8601 date when this record was last checked against source.
-    # None means never checked.
     last_checked: Optional[str] = None
+    source_updated_date: Optional[str] = None
+    
+    # Record status (e.g., 'draft', 'verified', 'expired', 'needs_review')
+    record_status: str = "draft"
 
-    # Searchable tags, e.g. ["scholarship", "merit", "central"].
     tags: list[str] = field(default_factory=list)
-
-    # Short snippet used in search results (auto-derived if absent)
     description_snippet: Optional[str] = None
 
 
@@ -116,26 +125,28 @@ class SchemeRecord:
 def scheme_from_dict(data: dict[str, Any]) -> SchemeRecord:
     """
     Build a SchemeRecord from a raw dict (as parsed from JSON).
-
-    Unknown fields are silently ignored so the schema can evolve.
-    Missing optional fields default to None / empty list.
-    Raises ValueError if required fields (id, name, description) are absent.
     """
     for required in ("id", "name", "description"):
         if not data.get(required):
             raise ValueError(
-                f"Scheme record is missing required field '{required}': {data!r}"
+                f"Scheme record is missing required field '{required}': {data.get('id', 'unknown')}"
             )
 
     raw_criteria = data.get("criteria") or {}
     criteria = EligibilityCriteria(
+        academic_year=raw_criteria.get("academic_year"),
         education_levels=raw_criteria.get("education_levels") or raw_criteria.get("education_level"),
+        eligible_courses=raw_criteria.get("eligible_courses"),
+        institution_types=raw_criteria.get("institution_types"),
+        domicile=raw_criteria.get("domicile"),
         state=raw_criteria.get("state"),
         caste_categories=raw_criteria.get("caste_categories") or raw_criteria.get("caste_category"),
         min_percentage=raw_criteria.get("min_percentage"),
+        merit_requirements=raw_criteria.get("merit_requirements"),
         annual_family_income_max=raw_criteria.get("annual_family_income_max"),
         gender=raw_criteria.get("gender"),
         disability_required=raw_criteria.get("disability_required"),
+        evidence=raw_criteria.get("evidence") or {},
         notes=raw_criteria.get("notes"),
     )
 
@@ -147,14 +158,23 @@ def scheme_from_dict(data: dict[str, Any]) -> SchemeRecord:
     return SchemeRecord(
         id=data["id"],
         name=data["name"],
+        provider=data.get("provider"),
+        administering_authority=data.get("administering_authority"),
         description=description,
         criteria=criteria,
+        award_amount=data.get("award_amount"),
+        award_duration=data.get("award_duration"),
+        renewal_conditions=data.get("renewal_conditions"),
         documents=data.get("documents") or [],
         application_steps=data.get("application_steps") or [],
+        opening_date=data.get("opening_date"),
         deadline=data.get("deadline"),
         source_url=data.get("source_url"),
+        source_document_urls=data.get("source_document_urls") or [],
         verified=bool(data.get("verified", False)),
         last_checked=data.get("last_checked"),
+        source_updated_date=data.get("source_updated_date"),
+        record_status=data.get("record_status", "draft"),
         tags=data.get("tags") or [],
         description_snippet=snippet,
     )

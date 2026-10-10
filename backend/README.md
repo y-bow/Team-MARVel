@@ -236,33 +236,53 @@ All errors: `{"error": "human-readable message", "code": "ERROR_CODE"}`
 Expected top-level format: **JSON array of scheme objects**.  
 Override the path with the `DATA_PATH` env var if the file lives elsewhere.
 
-Minimum required fields per record:
+Minimum required fields per record (see `backend/schemas.py` for all fields):
 
 ```jsonc
 {
   "id": "unique-slug",          // Required
   "name": "Scheme Name",        // Required
   "description": "...",         // Required
+  "provider": "Government/Private",
+  "administering_authority": "...",
   "criteria": {
+    "academic_year": "2024-25",
     "education_levels": [...],  // e.g. ["10th", "UG"] or null
+    "eligible_courses": [...],
+    "institution_types": [...],
+    "domicile": "Maharashtra",
     "state": "Maharashtra",     // null = all-India
     "caste_categories": [...],  // e.g. ["SC", "ST"] or ["any"]
     "min_percentage": 55.0,     // null = no restriction
+    "merit_requirements": "...",
     "annual_family_income_max": 250000, // null = no restriction
     "gender": "Female",         // "any" or null = no restriction
-    "disability_required": null
+    "disability_required": null,
+    "evidence": { "min_percentage": "Page 2 of guidelines" } // required for verification
   },
+  "award_amount": "₹50,000",
+  "award_duration": "1 year",
+  "renewal_conditions": "Maintain 60% attendance",
   "documents": [...],           // list of strings; [] is valid
   "application_steps": [...],   // list of strings; [] is valid
+  "opening_date": "2024-09-01", // ISO date string or null
   "deadline": "2024-10-31",     // ISO date string or null
   "source_url": "https://...",  // null = not available
+  "source_document_urls": ["https://..."],
   "verified": true,             // boolean
   "last_checked": "2024-09-15", // ISO date string or null
+  "source_updated_date": "2024-08-01",
+  "record_status": "verified",  // "draft", "verified", "expired", "needs_review"
   "tags": [...]                 // list of strings; [] is valid
 }
 ```
 
-See `backend/schemas.py` for the full `SchemeRecord` definition.
+### Validation and Ingestion
+You can validate a JSON file of schemes using the importer script:
+```bash
+python -m backend.importer validate data/schemes.json
+```
+This validates schema adherence, URL formats, dates, negative numbers, missing required evidence, and more. Demo fixtures are kept separate from production data (e.g., in `tests/fixtures/schemes.json`).
 
 ### Conversation state
 

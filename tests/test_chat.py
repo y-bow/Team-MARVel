@@ -184,28 +184,30 @@ def test_chat_no_stack_trace_on_agent_error(client, mock_provider):
     assert "Traceback" not in str(data)
 
 
-def test_chat_provider_quota_error_returns_429(client, mock_provider):
-    """Quota errors from the provider should return 429."""
+def test_chat_provider_quota_error_returns_demo(client, mock_provider):
+    """Quota errors from the provider should return a demo response (200)."""
     from backend.agent import ProviderError
 
     mock_provider.generate.side_effect = ProviderError(
         "API quota exceeded.", http_status=429
     )
     response = client.post("/api/chat", json={"message": "Hi"})
-    assert response.status_code == 429
+    assert response.status_code == 200
     data = response.get_json()
-    assert data["code"] == "PROVIDER_ERROR"
+    assert data.get("demo") is True
 
 
-def test_chat_provider_timeout_returns_503(client, mock_provider):
-    """Server/timeout errors should return 503."""
+def test_chat_provider_timeout_returns_demo(client, mock_provider):
+    """Server/timeout errors should return a demo response (200)."""
     from backend.agent import ProviderError
 
     mock_provider.generate.side_effect = ProviderError(
         "Model unavailable.", http_status=503
     )
     response = client.post("/api/chat", json={"message": "Hi"})
-    assert response.status_code == 503
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data.get("demo") is True
 
 
 # ---------------------------------------------------------------------------
