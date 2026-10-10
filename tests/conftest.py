@@ -42,7 +42,7 @@ SYNTHETIC_SCHEMES = [
             "annual_family_income_max": 250000.0,
             "gender": "any",
             "disability_required": None,
-            "notes": "Test notes only.",
+            "notes": None,
         },
         "documents": ["Aadhaar card", "Caste certificate", "Marksheet"],
         "application_steps": ["Step 1: Register", "Step 2: Apply"],
