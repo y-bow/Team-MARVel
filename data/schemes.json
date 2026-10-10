@@ -1,0 +1,187 @@
+[
+  {
+    "id": "nsp-pre-matric-sc-2024",
+    "name": "National Scholarship Portal — Pre-Matric Scholarship for SC Students",
+    "description": "Central government scholarship for students belonging to Scheduled Caste category studying in Classes 9 and 10. Covers tuition fees and maintenance allowance. Administered through the National Scholarship Portal.",
+    "criteria": {
+      "education_levels": ["9th", "10th"],
+      "state": null,
+      "caste_categories": ["SC"],
+      "min_percentage": 55.0,
+      "annual_family_income_max": 250000,
+      "gender": "any",
+      "disability_required": null,
+      "notes": "Student must be studying in a government or government-aided school."
+    },
+    "documents": [
+      "Aadhaar card",
+      "Caste certificate (SC)",
+      "Income certificate (annual family income ≤ ₹2.5 lakh)",
+      "Previous year marksheet",
+      "Bank account passbook (student's own account)",
+      "School enrollment certificate",
+      "Passport-size photograph"
+    ],
+    "application_steps": [
+      "Register on the National Scholarship Portal at scholarships.gov.in",
+      "Log in and select 'Fresh Application'",
+      "Fill in personal, academic, and bank details",
+      "Upload scanned copies of required documents",
+      "Submit and note your Application Reference Number",
+      "Get application verified by school/institute",
+      "Track status on the portal"
+    ],
+    "deadline": "2024-10-31",
+    "source_url": "https://scholarships.gov.in",
+    "verified": true,
+    "last_checked": "2024-09-15",
+    "tags": ["scholarship", "pre-matric", "SC", "central", "NSP", "school"]
+  },
+  {
+    "id": "inspire-scholarship-she-2024",
+    "name": "INSPIRE Scholarship for Higher Education (SHE)",
+    "description": "Department of Science & Technology scholarship for students who secured top 1% marks in Class 12 board exams and are pursuing Bachelor's or Master's in Natural and Basic Sciences. Provides ₹80,000 per year plus mentorship.",
+    "criteria": {
+      "education_levels": ["UG", "PG"],
+      "state": null,
+      "caste_categories": ["any"],
+      "min_percentage": null,
+      "annual_family_income_max": null,
+      "gender": "any",
+      "disability_required": null,
+      "notes": "Must be in top 1% of respective board exam. Must be pursuing BSc/BS/MSc/MS/Int-MSc in Natural Sciences, Mathematics, Statistics, or related disciplines. Not applicable for engineering or medicine."
+    },
+    "documents": [
+      "Class 12 marksheet showing top 1% rank or proof of top 1% in board",
+      "Admission letter from college/university",
+      "Aadhaar card",
+      "Bank account details (IFSC, account number)",
+      "Passport-size photograph",
+      "Self-declaration about not availing any other DST scholarship"
+    ],
+    "application_steps": [
+      "Visit the official INSPIRE portal at online-inspire.gov.in",
+      "Register with your email and create a password",
+      "Complete your academic profile and upload documents",
+      "Submit the application before the closing date",
+      "Your institution must provide online verification",
+      "Track status through the portal dashboard"
+    ],
+    "deadline": "2024-11-30",
+    "source_url": "https://online-inspire.gov.in",
+    "verified": true,
+    "last_checked": "2024-09-20",
+    "tags": ["scholarship", "science", "INSPIRE", "DST", "UG", "PG", "merit", "central"]
+  },
+  {
+    "id": "maharashtra-eklavya-scholarship-2024",
+    "name": "Eklavya Scholarship — Maharashtra Tribal Development Department",
+    "description": "State scholarship for Scheduled Tribe students in Maharashtra studying in Classes 5 to 12 and in higher education. Provides stipend, book allowance, and hostel assistance for eligible tribal students.",
+    "criteria": {
+      "education_levels": ["5th", "6th", "7th", "8th", "9th", "10th", "11th", "12th", "UG", "PG"],
+      "state": "Maharashtra",
+      "caste_categories": ["ST"],
+      "min_percentage": 50.0,
+      "annual_family_income_max": 150000,
+      "gender": "any",
+      "disability_required": null,
+      "notes": "Student must be domiciled in Maharashtra. Tribe must be listed in Maharashtra ST schedule."
+    },
+    "documents": [
+      "Caste certificate (ST) issued by Maharashtra authority",
+      "Domicile certificate (Maharashtra)",
+      "Income certificate (annual family income ≤ ₹1.5 lakh)",
+      "Previous year marksheet",
+      "School/college bonafide certificate",
+      "Aadhaar card",
+      "Bank account passbook"
+    ],
+    "application_steps": [
+      "Visit the Maharashtra Mahadblt portal at mahadblt.maharashtra.gov.in",
+      "Register or log in with your Aadhaar-linked mobile number",
+      "Select the Eklavya Scholarship scheme",
+      "Fill in personal, academic, and caste details",
+      "Upload all required documents",
+      "Submit and collect the acknowledgement receipt",
+      "Verification will be done by the Tribal Development Officer"
+    ],
+    "deadline": null,
+    "source_url": "https://mahadblt.maharashtra.gov.in",
+    "verified": false,
+    "last_checked": null,
+    "tags": ["scholarship", "ST", "tribal", "Maharashtra", "state", "school", "higher-education"]
+  },
+  {
+    "id": "pm-yasasvi-obc-2024",
+    "name": "PM YASASVI — Pre & Post-Matric Scholarship for OBC/EBC/DNT Students",
+    "description": "Prime Minister's Young Achievers Scholarship Award Scheme for Vibrant India. Provides scholarships to OBC, EBC (Economically Backward Class), and DNT (De-notified Tribes) students studying in Classes 9 to 12 and in higher education. Administered via NTA entrance test.",
+    "criteria": {
+      "education_levels": ["9th", "10th", "11th", "12th", "UG"],
+      "state": null,
+      "caste_categories": ["OBC", "EBC", "DNT"],
+      "min_percentage": null,
+      "annual_family_income_max": 250000,
+      "gender": "any",
+      "disability_required": null,
+      "notes": "Selection based on PM YASASVI entrance test conducted by NTA. Students must be studying in Class 9 or 11 at the time of exam."
+    },
+    "documents": [
+      "Aadhaar card",
+      "OBC/EBC/DNT caste certificate",
+      "Income certificate (annual family income ≤ ₹2.5 lakh)",
+      "Admit card and scorecard of PM YASASVI entrance test",
+      "Current year enrollment certificate",
+      "Bank account details",
+      "Passport-size photograph"
+    ],
+    "application_steps": [
+      "Register at yet.nta.ac.in for the PM YASASVI entrance test",
+      "Appear for the entrance test on the scheduled date",
+      "After qualifying, apply for the scholarship on scholarships.gov.in",
+      "Fill in academic and personal details and upload documents",
+      "Submit before the scholarship portal deadline",
+      "Verification done by school/institution"
+    ],
+    "deadline": "2024-09-30",
+    "source_url": "https://yet.nta.ac.in",
+    "verified": true,
+    "last_checked": "2024-08-01",
+    "tags": ["scholarship", "OBC", "EBC", "DNT", "PM-YASASVI", "NTA", "central", "pre-matric", "post-matric"]
+  },
+  {
+    "id": "google-womens-scholarship-india-2024",
+    "name": "Google Generation Scholarship — India (Women in Tech)",
+    "description": "Google scholarship for women students pursuing undergraduate or graduate degrees in Computer Science or related technical fields in India. Selected scholars receive a monetary award and may be invited to a scholars' retreat.",
+    "criteria": {
+      "education_levels": ["UG", "PG"],
+      "state": null,
+      "caste_categories": ["any"],
+      "min_percentage": null,
+      "annual_family_income_max": null,
+      "gender": "Female",
+      "disability_required": null,
+      "notes": "Applicant must be enrolled full-time in a Bachelor's or Master's programme in Computer Science, Computer Engineering, or a related technical field. Strong academic record and demonstrated financial need preferred."
+    },
+    "documents": [
+      "Current enrollment proof from university",
+      "Academic transcripts",
+      "Resume/CV",
+      "Two recommendation letters (professors or employers)",
+      "Personal essay (prompt provided in application)",
+      "Photo ID"
+    ],
+    "application_steps": [
+      "Visit buildyourfuture.withgoogle.com and find the Generation Scholarship",
+      "Complete the online application form",
+      "Write the personal essay as per the provided prompt",
+      "Submit two recommendation letters from referees",
+      "Upload transcripts and other required documents",
+      "Submit by the stated deadline and await results"
+    ],
+    "deadline": "2024-12-15",
+    "source_url": "https://buildyourfuture.withgoogle.com/scholarships/generation-google-scholarship-apac",
+    "verified": true,
+    "last_checked": "2024-09-01",
+    "tags": ["scholarship", "women", "tech", "CS", "Google", "UG", "PG", "private", "all-India"]
+  }
+]
