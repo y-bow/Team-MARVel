@@ -19,7 +19,6 @@ Design rules:
 from __future__ import annotations
 
 import os
-import uuid
 import sys
 import traceback
 from pathlib import Path
@@ -251,17 +250,10 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
             app.logger.info(f"[TIMING] Total /api/chat duration: {end_time - start_time:.3f}s")
         except ProviderError as exc:
             app.logger.warning("ProviderError: %s", exc)
-            # Fallback demo response when the Gemini model is unavailable
-            demo_payload = {
-                "conversation_id": str(uuid.uuid4()),
-                "status": "completed",
-                "answer": "Sorry, the AI service is currently unavailable. This is a demo response.",
-                "sources": [],
-                "events": [],
-                "action_plan": [],
-                "demo": True,
-            }
-            return jsonify(demo_payload), 200
+            return jsonify({
+                "error": str(exc),
+                "code": "PROVIDER_ERROR",
+            }), exc.http_status
         except Exception:
             app.logger.error("Agent error: %s", traceback.format_exc())
             return jsonify({
