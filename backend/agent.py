@@ -40,11 +40,23 @@ from backend.repository import BaseRepository
 from backend import tools as tool_fns
 
 # ---------------------------------------------------------------------------
-# Conversation state (in-process, per-worker)
+# Conversation state — in-process (default) or injected store
 # ---------------------------------------------------------------------------
 
-# Maps conversation_id → list[types.Content]
-_CONVERSATIONS: dict[str, list[types.Content]] = {}
+class InMemoryStore:
+    """Lightweight in-process store. Default when no SQLite path is configured."""
+
+    def __init__(self) -> None:
+        self._data: dict[str, list[types.Content]] = {}
+
+    def get(self, key: str) -> Optional[list[types.Content]]:
+        return self._data.get(key)
+
+    def __setitem__(self, key: str, value: list[types.Content]) -> None:
+        self._data[key] = value
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._data
 
 
 # ---------------------------------------------------------------------------
@@ -645,10 +657,12 @@ class AgentLoop:
         provider: BaseProvider,
         tool_registry: dict[str, Any],
         config: Config,
+        conversation_store: Any = None,
     ) -> None:
         self._provider = provider
         self._registry = tool_registry
         self._config = config
+        self._store = conversation_store or InMemoryStore()
 
     def run(
         self,
@@ -661,12 +675,11 @@ class AgentLoop:
 
         Raises ProviderError for quota/timeout errors (caller maps to HTTP status).
         """
-        # Resolve or create conversation
-        if not conversation_id or conversation_id not in _CONVERSATIONS:
+        if conversation_id and conversation_id in self._store:
+            history: list[types.Content] = self._store.get(conversation_id)
+        else:
             conversation_id = str(uuid.uuid4())
-            _CONVERSATIONS[conversation_id] = []
-
-        history: list[types.Content] = _CONVERSATIONS[conversation_id]
+            history = []
 
         # Append user message
         history.append(types.Content(role="user", parts=[types.Part(text=message)]))
@@ -873,7 +886,7 @@ class AgentLoop:
             })
 
         # Persist updated history
-        _CONVERSATIONS[conversation_id] = history
+        self._store[conversation_id] = history
 
         # Cap answer length
         max_len = self._config.max_answer_length

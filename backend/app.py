@@ -33,7 +33,8 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from backend.config import load_config, ConfigurationError
 from backend.repository import JSONRepository
-from backend.agent import AgentLoop, OpenRouterProvider, ProviderError, build_tool_registry
+from backend.agent import AgentLoop, InMemoryStore, OpenRouterProvider, ProviderError, build_tool_registry
+from backend.session import SQLiteConversationStore, SESSION_COOKIE, SESSION_TTL_DAYS
 
 # Absolute path to the frontend directory (served as static files).
 FRONTEND_DIR = os.path.join(
@@ -107,12 +108,18 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
         base_url=cfg.openrouter_base_url,
     )
     registry = build_tool_registry(repo, cfg)
-    agent = AgentLoop(provider=prov, tool_registry=registry, config=cfg)
+    store: Any = (
+        SQLiteConversationStore(cfg.sessions_db)
+        if cfg.sessions_db
+        else InMemoryStore()
+    )
+    agent = AgentLoop(provider=prov, tool_registry=registry, config=cfg, conversation_store=store)
 
     # Store on app for access in request context
     app.config["EDUSAARTHI_CONFIG"] = cfg
     app.config["EDUSAARTHI_REPO"] = repo
     app.config["EDUSAARTHI_AGENT"] = agent
+    app.config["EDUSAARTHI_STORE"] = store
 
     # ------------------------------------------------------------------
     # Error handlers
@@ -165,6 +172,18 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
             "data_quality": repo_.data_quality(cfg_.deadline_stale_days),
         }), 200
 
+    @app.delete("/api/session")
+    def delete_session():
+        """Delete all conversations for the current session and clear the cookie."""
+        store_ = app.config["EDUSAARTHI_STORE"]
+        session_id = request.cookies.get(SESSION_COOKIE)
+        deleted = 0
+        if session_id and hasattr(store_, "delete_session"):
+            deleted = store_.delete_session(session_id)
+        response = jsonify({"status": "ok", "conversations_deleted": deleted})
+        response.delete_cookie(SESSION_COOKIE)
+        return response, 200
+
     @app.post("/api/chat")
     def chat():
         """
@@ -180,6 +199,11 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
         """
         cfg_ = app.config["EDUSAARTHI_CONFIG"]
         agent_ = app.config["EDUSAARTHI_AGENT"]
+        store_ = app.config["EDUSAARTHI_STORE"]
+
+        # -- Session cookie --
+        existing_session = request.cookies.get(SESSION_COOKIE)
+        session_id = store_.ensure_session(existing_session) if hasattr(store_, "ensure_session") else None
 
         # -- Parse JSON body --
         if not request.is_json:
@@ -289,7 +313,19 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
         if result.steps:
             payload["steps"] = result.steps
 
-        return jsonify(payload), 200
+        response = jsonify(payload)
+        if session_id:
+            store_.bind_conversation(result.conversation_id, session_id)
+            if request.cookies.get(SESSION_COOKIE) != session_id:
+                response.set_cookie(
+                    SESSION_COOKIE,
+                    session_id,
+                    max_age=SESSION_TTL_DAYS * 86400,
+                    httponly=True,
+                    samesite="Lax",
+                    secure=False,
+                )
+        return response, 200
 
     return app
 

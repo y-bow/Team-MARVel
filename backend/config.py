@@ -85,6 +85,9 @@ class Config:
     # OpenRouter API base URL (OpenAI-compatible Chat Completions endpoint)
     openrouter_base_url: str = field(default="https://openrouter.ai/api/v1")
 
+    # SQLite file path for conversation persistence. Empty string = in-memory.
+    sessions_db: str = field(default="")
+
     # Application version surfaced on /health
     version: str = field(default="1.0.0")
 

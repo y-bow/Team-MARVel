@@ -1,57 +1,32 @@
 /* ============================================================================
    EduSaarthi AI — responsive.css
-   Tablet and mobile behaviour, off-canvas navigation and layout reflow.
+   Tablet and mobile behaviour, off-canvas sidebar and layout reflow.
    ========================================================================== */
-
-/* --------------------------- Panel back button (base) --------------------------- */
-.panel__back {
-  display: none;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  border-radius: var(--r-md);
-  color: var(--muted-strong);
-  place-items: center;
-}
-.panel__back:hover {
-  background: var(--surface-sunken);
-  color: var(--ink);
-}
-.panel__back .icon {
-  width: 18px;
-  height: 18px;
-  transform: rotate(180deg);
-}
 
 /* --------------------------- Compact desktop --------------------------- */
 @media (max-width: 1240px) {
   :root {
-    --sidebar-w: 236px;
-    --panel-w: 360px;
+    --sidebar-w: 240px;
   }
   .topbar,
   .banner {
-    padding-left: var(--sp-5);
-    padding-right: var(--sp-5);
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
   }
   .conversation,
-  .composer-wrap,
-  .list-view {
-    padding-left: var(--sp-5);
-    padding-right: var(--sp-5);
+  .composer-wrap {
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
   }
 }
 
 /* --------------------------- Tablet: off-canvas sidebar --------------------------- */
 @media (max-width: 1080px) {
   .app {
-    grid-template-columns: minmax(0, 1fr) var(--panel-w);
+    grid-template-columns: minmax(0, 1fr);
   }
   .main {
     grid-column: 1;
-  }
-  .panel {
-    grid-column: 2;
   }
   .sidebar {
     position: fixed;
@@ -72,12 +47,30 @@
   .topbar__menu {
     display: inline-grid;
   }
+
+  /* Hide desktop collapse button on tablet/mobile */
+  .sidebar__collapse {
+    display: none;
+  }
+  .topbar__expand {
+    display: none !important;
+  }
+}
+
+/* --------------------------- Desktop collapsed sidebar --------------------------- */
+@media (min-width: 1081px) {
+  body[data-sidebar-collapsed="true"] .topbar__expand {
+    display: inline-grid;
+  }
+  body[data-sidebar-collapsed="true"] .topbar__menu {
+    display: none;
+  }
 }
 
 /* --------------------------- Mobile / small tablet --------------------------- */
 @media (max-width: 860px) {
   :root {
-    --topbar-h: 58px;
+    --topbar-h: 52px;
   }
 
   .app {
@@ -87,82 +80,36 @@
     grid-column: 1;
   }
 
-  .mobile-tabs {
-    display: inline-flex;
-    background: var(--surface-sunken);
-    border-radius: var(--r-md);
-    padding: 2px;
-    gap: 2px;
-  }
-  .mobile-tabs__btn {
-    padding: 5px 12px;
-    border-radius: var(--r-sm);
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--muted-strong);
-    transition: background var(--t-fast), color var(--t-fast);
-  }
-  .mobile-tabs__btn.is-active {
-    background: var(--surface);
-    color: var(--ink);
-    box-shadow: var(--shadow-xs);
-  }
-
   .demo-badge {
     display: none;
   }
-  .topbar__right {
-    gap: var(--sp-3);
-  }
-
-  /* Panel becomes a full-screen sheet toggled by the mobile tab bar */
-  .panel {
-    position: fixed;
-    inset: 0;
-    z-index: 45;
-    border-left: none;
-    transform: translateX(100%);
-    transition: transform var(--t-slow);
-    visibility: hidden;
-  }
-  body[data-mobile-view="panel"] .panel {
-    transform: translateX(0);
-    visibility: visible;
-  }
-
-  .panel__back {
-    display: inline-grid;
-  }
 
   .composer-wrap {
-    padding-bottom: max(var(--sp-5), env(safe-area-inset-bottom));
+    padding-bottom: max(var(--sp-4), env(safe-area-inset-bottom));
+  }
+
+  .welcome {
+    padding-top: var(--sp-6);
   }
 }
 
 /* --------------------------- Small phones --------------------------- */
 @media (max-width: 560px) {
   .topbar {
-    gap: var(--sp-3);
-    padding: 0 var(--sp-4);
-  }
-  .topbar__title p {
-    display: none;
+    gap: var(--sp-2);
+    padding: 0 var(--sp-3);
   }
   .topbar__title h1 {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .conversation,
-  .composer-wrap,
-  .list-view {
-    padding-left: var(--sp-4);
-    padding-right: var(--sp-4);
+  .composer-wrap {
+    padding-left: var(--sp-3);
+    padding-right: var(--sp-3);
   }
   .conversation {
-    padding-top: var(--sp-5);
-  }
-  .panel__body {
-    padding: var(--sp-4);
+    padding-top: var(--sp-4);
   }
 
   .starters {
@@ -171,26 +118,25 @@
   .welcome {
     padding-top: var(--sp-4);
   }
+  .welcome__title {
+    font-size: 18px;
+  }
   .welcome__lead {
-    margin-bottom: var(--sp-6);
+    font-size: 14px;
   }
 
-  .msg__user-bubble {
+  .msg__bubble--user {
     max-width: 90%;
   }
 
-  .list-head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--sp-3);
+  .result-section {
+    padding: var(--sp-3);
   }
 }
 
-/* --------------------------- Reduced motion (motionless sheets) --------------------------- */
-/* --------------------------- Reduced motion (motionless sheets) --------------------------- */
+/* --------------------------- Reduced motion --------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  .sidebar,
-  .panel {
+  .sidebar {
     transition: none;
   }
 }
