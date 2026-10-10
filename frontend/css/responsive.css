@@ -3,6 +3,26 @@
    Tablet and mobile behaviour, off-canvas navigation and layout reflow.
    ========================================================================== */
 
+/* --------------------------- Panel back button (base) --------------------------- */
+.panel__back {
+  display: none;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--r-md);
+  color: var(--muted-strong);
+  place-items: center;
+}
+.panel__back:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.panel__back .icon {
+  width: 18px;
+  height: 18px;
+  transform: rotate(180deg);
+}
+
 /* --------------------------- Compact desktop --------------------------- */
 @media (max-width: 1240px) {
   :root {
@@ -167,29 +187,10 @@
 }
 
 /* --------------------------- Reduced motion (motionless sheets) --------------------------- */
+/* --------------------------- Reduced motion (motionless sheets) --------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .sidebar,
   .panel {
     transition: none;
   }
-}
-
-/* --------------------------- Panel back button (base) --------------------------- */
-.panel__back {
-  display: none;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  border-radius: var(--r-md);
-  color: var(--muted-strong);
-  place-items: center;
-}
-.panel__back:hover {
-  background: var(--surface-sunken);
-  color: var(--ink);
-}
-.panel__back .icon {
-  width: 18px;
-  height: 18px;
-  transform: rotate(180deg);
 }
