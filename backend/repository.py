@@ -173,9 +173,13 @@ class JSONRepository(BaseRepository):
         with open(self._data_path, encoding="utf-8") as fh:
             raw: Any = json.load(fh)
 
+        if isinstance(raw, dict):
+            raw = raw.get("schemes")
+
         if not isinstance(raw, list):
             raise ValueError(
-                f"Knowledge-base file must be a JSON array, got {type(raw).__name__}: "
+                f"Knowledge-base file must be a JSON array (v1) or an object "
+                f"with a 'schemes' array (v2), got {type(raw).__name__}: "
                 f"{self._data_path!r}"
             )
 
