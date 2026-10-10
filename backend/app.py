@@ -16,7 +16,14 @@ Design rules:
 from __future__ import annotations
 
 import os
+import sys
 import traceback
+from pathlib import Path
+
+# Ensure repo root is on sys.path when executed directly
+_repo_root = str(Path(__file__).resolve().parent.parent)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
 
 from flask import Flask, jsonify, request, g
 
@@ -198,14 +205,21 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
                 "code": "AGENT_ERROR",
             }), 500
 
-        return jsonify({
+        resp_payload = {
             "conversation_id": result.conversation_id,
             "status": result.status,
             "answer": result.answer,
             "sources": result.sources,
             "events": result.events,
             "action_plan": result.action_plan,
-        }), 200
+        }
+        if result.status == "needs_clarification":
+            resp_payload["clarification"] = {
+                "question": result.answer,
+                "options": [],
+            }
+
+        return jsonify(resp_payload), 200
 
     return app
 

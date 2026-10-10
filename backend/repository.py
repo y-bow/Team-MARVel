@@ -228,9 +228,12 @@ def _matches_education(scheme: SchemeRecord, level: str) -> bool:
 def _matches_state(scheme: SchemeRecord, state: str) -> bool:
     """Return True if the scheme applies to the requested state."""
     scheme_state = scheme.criteria.state
+    state_norm = state.lower().strip()
+    if state_norm in ("all india", "all", "any"):
+        return True
     if not scheme_state:
-        return True  # All-India / no restriction
-    return scheme_state.lower().strip() == state.lower().strip()
+        return False
+    return scheme_state.lower().strip() == state_norm
 
 
 def _requirements_complete(scheme: SchemeRecord) -> bool:
