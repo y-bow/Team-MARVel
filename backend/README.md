@@ -181,7 +181,7 @@ gunicorn "backend.app:create_app()" \
 | Value | Meaning |
 |---|---|
 | `completed` | Agent produced a final answer |
-| `needs_clarification` | Agent is asking the student a follow-up question |
+| `needs_clarification` | Agent is asking the student a follow-up question (also includes `clarification` object for frontend normalisation) |
 
 **Error responses:**
 
