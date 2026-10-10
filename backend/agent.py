@@ -202,6 +202,32 @@ _TOOL_DECLARATIONS = [
             required=["goal", "scheme_ids", "eligibility_results", "missing_info"],
         ),
     ),
+    types.FunctionDeclaration(
+        name="search_guidelines",
+        description=(
+            "Search official scholarship guidelines and FAQs for evidence. "
+            "Use this to answer specific questions about rules, limits, or procedures "
+            "using retrieved text from official PDFs/HTML documents."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "query": types.Schema(
+                    type=types.Type.STRING,
+                    description="The question or keywords to search for in the guidelines.",
+                ),
+                "scheme_id": types.Schema(
+                    type=types.Type.STRING,
+                    description="Optional. Filter evidence by a specific scheme ID.",
+                ),
+                "academic_year": types.Schema(
+                    type=types.Type.STRING,
+                    description="Optional. Filter evidence by academic year (e.g. 2024-25).",
+                ),
+            },
+            required=["query"],
+        ),
+    ),
 ]
 
 _GEMINI_TOOL = types.Tool(function_declarations=_TOOL_DECLARATIONS)
@@ -538,7 +564,7 @@ class OpenRouterProvider(BaseProvider):
 # Tool registry
 # ---------------------------------------------------------------------------
 
-def build_tool_registry(repository: BaseRepository, config: Config) -> dict[str, Any]:
+def build_tool_registry(repository: BaseRepository, config: Config, rag_store: Any = None) -> dict[str, Any]:
     """
     Return a dict mapping tool name → callable.
     Callables accept **kwargs matching the FunctionDeclaration parameters.
@@ -574,6 +600,12 @@ def build_tool_registry(repository: BaseRepository, config: Config) -> dict[str,
             scheme_ids=kw.get("scheme_ids", []),
             eligibility_results=kw.get("eligibility_results", []),
             missing_info=kw.get("missing_info", []),
+        ),
+        "search_guidelines": lambda **kw: tool_fns.search_guidelines(
+            rag_store=rag_store,
+            query=kw["query"],
+            scheme_id=kw.get("scheme_id"),
+            academic_year=kw.get("academic_year"),
         ),
     }
 

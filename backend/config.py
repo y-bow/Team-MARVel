@@ -88,17 +88,27 @@ class Config:
     # Application version surfaced on /health
     version: str = field(default="1.0.0")
 
+    # RAG Settings
+    vector_store_path: str = field(default="data/chroma_db")
+    embedding_model: str = field(default="all-MiniLM-L6-v2")
 
-def load_config() -> Config:
+
+def load_config(require_api_key: bool = True) -> Config:
     """
     Load and validate configuration from environment variables.
 
     Raises ConfigurationError for missing required variables.
     Never logs the API key.
     """
+    if require_api_key:
+        api_key = _require("OPENROUTER_API_KEY")
+        model = _require("OPENROUTER_MODEL")
+    else:
+        api_key = os.getenv("OPENROUTER_API_KEY", "").strip() or "dummy-key-for-ingestion"
+        model = os.getenv("OPENROUTER_MODEL", "").strip() or "dummy-model"
     return Config(
-        openrouter_api_key=_require("OPENROUTER_API_KEY"),
-        openrouter_model=_require("OPENROUTER_MODEL"),
+        openrouter_api_key=api_key,
+        openrouter_model=model,
         openrouter_base_url=_optional(
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
         ),
@@ -112,4 +122,6 @@ def load_config() -> Config:
         deadline_stale_days=_optional_int("DEADLINE_STALE_DAYS", 30),
         data_path=_optional("DATA_PATH", "data/schemes.json"),
         version=_optional("APP_VERSION", "1.0.0"),
+        vector_store_path=_optional("VECTOR_STORE_PATH", "data/chroma_db"),
+        embedding_model=_optional("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
     )

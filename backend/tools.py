@@ -680,3 +680,55 @@ def create_action_plan(
         "steps": steps,
         "disclaimer": ACTION_PLAN_DISCLAIMER,
     }
+
+# ---------------------------------------------------------------------------
+# Tool 6: search_guidelines (RAG)
+# ---------------------------------------------------------------------------
+
+def search_guidelines(
+    rag_store: Any,
+    query: str,
+    scheme_id: Optional[str] = None,
+    academic_year: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Search official scholarship guidelines for evidence using RAG.
+    
+    Returns relevant document chunks and their citations.
+    """
+    try:
+        query = _validate_str(query, "query", max_len=1000)
+    except ValueError as exc:
+        return _error_response("INVALID_INPUT", str(exc))
+        
+    if not rag_store or not rag_store.is_available:
+        return _error_response("UNAVAILABLE", "RAG vector store is currently unavailable.")
+        
+    evidence = rag_store.search_evidence(query=query, scheme_id=scheme_id, academic_year=academic_year)
+    
+    if not evidence:
+        return {
+            "query": query,
+            "evidence": [],
+            "message": "No relevant evidence found in the official guidelines for this query."
+        }
+        
+    results = []
+    for item in evidence:
+        meta = item["metadata"]
+        results.append({
+            "content": item["content"],
+            "scheme_id": meta.get("scheme_id"),
+            "academic_year": meta.get("academic_year"),
+            "source_title": meta.get("source_title"),
+            "source_url": meta.get("source_url"),
+            "page_number": meta.get("page_number"),
+            "source_type": meta.get("source_type")
+        })
+        
+    return {
+        "query": query,
+        "evidence": results,
+        "message": "Extracted evidence from official guidelines."
+    }
+

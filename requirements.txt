@@ -15,6 +15,11 @@ google-genai>=1.70.0
 python-dotenv>=1.2.2
 gunicorn>=22.0.0
 
+# RAG Dependencies
+chromadb>=0.4.0
+pypdf>=4.0.0
+beautifulsoup4>=4.12.0
+
 # Dev / test dependencies (also installed from this file for simplicity)
 pytest>=9.0.3
 pytest-mock>=3.14.0

@@ -101,13 +101,19 @@ def create_app(config=None, repository=None, provider=None) -> Flask:
         raise RuntimeError(str(exc)) from exc
 
     # ------------------------------------------------------------------
-    # Initialise provider and agent loop
+    # Initialise provider, RAG store, and agent loop
     # ------------------------------------------------------------------
+    from backend.rag import RAGStore
+    
     prov = provider or OpenRouterProvider(
         api_key=cfg.openrouter_api_key,
         base_url=cfg.openrouter_base_url,
     )
-    registry = build_tool_registry(repo, cfg)
+    rag_store = RAGStore(
+        persist_directory=cfg.vector_store_path,
+        embedding_model_name=cfg.embedding_model
+    )
+    registry = build_tool_registry(repo, cfg, rag_store=rag_store)
     agent = AgentLoop(provider=prov, tool_registry=registry, config=cfg)
 
     # Store on app for access in request context
